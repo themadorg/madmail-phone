@@ -5,8 +5,6 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
-import android.net.ConnectivityManager
-import android.net.NetworkCapabilities
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -36,12 +34,12 @@ import com.google.zxing.BarcodeFormat
 import com.google.zxing.MultiFormatWriter
 import kotlinx.coroutines.*
 import org.json.JSONObject
+import org.madmail.mobile.core.GuestAddresses
+import org.madmail.mobile.core.GuestNetwork
 import org.madmail.mobile.core.InviteLinks
 import org.madmail.mobile.core.RemoteServer
 import org.madmail.mobile.engine.*
 import java.io.File
-import java.net.Inet4Address
-import java.net.NetworkInterface
 import java.net.URI
 import java.text.NumberFormat
 import java.time.Instant
@@ -68,12 +66,15 @@ internal fun RegistrationScreen(serverId: String, serverName: String, remote: Re
     val remoteState = ssh?.state?.collectAsState()?.value
     val ready = if (phone) localState.phase == EnginePhase.Running else remoteState?.connected == true && remoteState.status.startsWith("Running")
     val prefs = remember(serverId) { context.getSharedPreferences("invite-$serverId", Context.MODE_PRIVATE) }
-    var origin by remember(serverId) { mutableStateOf(prefs.getString("origin", null) ?: if (phone) localInviteOrigin(context) else "https://${remote!!.host}:18443") }
+    var origin by remember(serverId) { mutableStateOf(prefs.getString("origin", null) ?: if (phone) localInviteOrigin(context) else GuestAddresses.origin(remote!!.host).orEmpty()) }
     var code by remember(serverId) { mutableStateOf(initialEndpoint) }
     var invitations by remember(serverId) { mutableStateOf<List<Invitation>>(emptyList()) }
     var loaded by remember(serverId) { mutableStateOf(false) }
     var refresh by remember { mutableIntStateOf(0) }
-    var busy by remember { mutableStateOf(false) }
+    val creation = remember(serverId) { InvitationCreation.get(context, serverId, remote) }
+    val creationState by creation.state.collectAsState()
+    var revoking by remember { mutableStateOf(false) }
+    val busy = revoking || creationState.busy
     var error by remember { mutableStateOf<String?>(null) }
     var notice by remember { mutableStateOf<String?>(null) }
     var create by remember { mutableStateOf(false) }
@@ -87,6 +88,9 @@ internal fun RegistrationScreen(serverId: String, serverName: String, remote: Re
         if (phone) local.invitationRequest(method, body) else ssh!!.invitationRequest(method, body)
     }
     fun select(value: String) { code = value; onEndpointChange(value) }
+    LaunchedEffect(creationState.code) {
+        creationState.code?.let { select(it); creation.consume(); create = false; refresh++; notice = "Invitation created." }
+    }
     LaunchedEffect(copied) { if (copied) { delay(1800); copied = false } }
     LaunchedEffect(ready, refresh) {
         loaded = false
@@ -144,38 +148,29 @@ internal fun RegistrationScreen(serverId: String, serverName: String, remote: Re
             Text(if (!ready) if (phone) "Start hosting from Overview to create invitations." else "Connect to this server from Overview to create invitations." else if (code.isNotBlank()) "This invitation is unavailable or has expired. Choose another invitation or create a new one." else "Create a link for guests, or an account QR for one person.", color = colors.onSurfaceVariant)
         }
         HorizontalDivider(color = colors.outlineVariant)
-        Row(Modifier.fillMaxWidth().clickable { editAddress = true }.heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Icon(if (phone) Icons.Outlined.Wifi else Icons.Outlined.Language, null, tint = colors.primary)
+        Row(Modifier.fillMaxWidth().clickable(enabled = !busy) { editAddress = true }.heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Icon(Icons.Outlined.Link, null, tint = colors.primary)
             Column(Modifier.weight(1f)) {
-                Text(if (phone) "Local network address" else "Guest-facing address", style = MaterialTheme.typography.labelMedium, color = colors.onSurfaceVariant)
+                Text("Guest-facing address", style = MaterialTheme.typography.labelMedium, color = colors.onSurfaceVariant)
                 Text(origin.ifBlank { "Choose an address" }, style = MaterialTheme.typography.bodyMedium)
             }
             Icon(Icons.Outlined.Edit, "Edit guest-facing address", Modifier.size(20.dp))
         }
-        if (phone) Text("Guests need to be on the same Wi-Fi or hotspot. If the phone’s address changes, update it here.", style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
-        Button(onClick = { create = true }, enabled = ready && !busy && InviteLinks.origin(origin) != null, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Icon(Icons.Outlined.Add, null); Spacer(Modifier.width(8.dp)); Text("Create invitation") }
+        if (phone) Text("Use Wi-Fi or hotspot for nearby guests, or a VPN / Tailscale address for guests on that network. Update this address when the network changes.", style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
+        Button(onClick = { create = true }, enabled = ready && !busy && !creationState.uncertain && InviteLinks.origin(origin) != null, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Icon(Icons.Outlined.Add, null); Spacer(Modifier.width(8.dp)); Text("Create invitation") }
         TextButton(onClick = { manage = true }, enabled = ready, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.ConfirmationNumber, null, Modifier.size(20.dp)); Spacer(Modifier.width(8.dp)); Text(if (loaded) "Manage invitations · ${numbers.format(invitations.size)}" else "Manage invitations") }
         if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
         notice?.let { Text(it, color = colors.primary, style = MaterialTheme.typography.bodyMedium) }
         error?.let { Text(it, color = colors.error, style = MaterialTheme.typography.bodyMedium) }
+        creationState.error?.let { Text(it, color = colors.error, style = MaterialTheme.typography.bodyMedium) }
     }
-    if (editAddress) {
-        var draft by remember { mutableStateOf(origin) }
-        AlertDialog(onDismissRequest = { editAddress = false }, title = { Text("Guest-facing address") }, text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Use the HTTPS address guests can reach. SSH and admin addresses stay private.")
-                OutlinedTextField(draft, { draft = it }, label = { Text("HTTPS address") }, placeholder = { Text("https://192.168.1.10:18443") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri), singleLine = true)
-                if (phone) TextButton(onClick = { draft = localInviteOrigin(context) }) { Text("Use current Wi-Fi address") }
-            }
-        }, confirmButton = { TextButton(enabled = InviteLinks.origin(draft) != null, onClick = {
-            val updated = checkNotNull(InviteLinks.origin(draft))
-            val updatedCode = if (personal) InviteLinks.login(code, updated) else selected?.let { InviteLinks.invite(updated, it.token) }.orEmpty()
-            origin = updated; prefs.edit().putString("origin", origin).apply()
-            select(updatedCode); editAddress = false
-        }) { Text("Save") } }, dismissButton = { TextButton(onClick = { editAddress = false }) { Text("Cancel") } })
+    if (editAddress) GuestAddressSheet(origin, remote, onDismiss = { editAddress = false }) { updated ->
+        val updatedCode = if (personal) InviteLinks.login(code, updated) else selected?.let { InviteLinks.invite(updated, it.token) }.orEmpty()
+        origin = updated; prefs.edit().putString("origin", origin).apply()
+        select(updatedCode); editAddress = false; notice = "Guest address updated. Share the updated QR code."
     }
     if (create) {
-        var account by remember { mutableStateOf(false) }
+        var account by remember { mutableStateOf(true) }
         var title by remember { mutableStateOf("") }
         var uses by remember { mutableStateOf("1") }
         var expiry by remember { mutableStateOf("24h") }
@@ -183,10 +178,10 @@ internal fun RegistrationScreen(serverId: String, serverName: String, remote: Re
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Text("New invitation", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(!account, { account = false }, label = { Text("Invite link") }, leadingIcon = { Icon(Icons.Outlined.Link, null, Modifier.size(18.dp)) }, enabled = !busy)
                     FilterChip(account, { account = true }, label = { Text("Account QR") }, leadingIcon = { Icon(Icons.Outlined.PersonAdd, null, Modifier.size(18.dp)) }, enabled = !busy)
+                    FilterChip(!account, { account = false }, label = { Text("Browser link") }, leadingIcon = { Icon(Icons.Outlined.Link, null, Modifier.size(18.dp)) }, enabled = !busy)
                 }
-                Text(if (account) "Create one account now. Its QR includes the IMAP and SMTP settings for Delta Chat." else "Guests open a web invitation and create their own accounts.", color = colors.onSurfaceVariant)
+                Text(if (account) "Create one account now. Its QR includes the IMAP and SMTP settings for Delta Chat." else "Guests open this in a browser. The server must advertise a reachable mail hostname.", color = colors.onSurfaceVariant)
                 OutlinedTextField(title, { title = it.take(120) }, label = { Text("Label (optional)") }, singleLine = true, modifier = Modifier.fillMaxWidth(), enabled = !busy)
                 if (!account) OutlinedTextField(uses, { uses = it.filter(Char::isDigit).take(6) }, label = { Text("Maximum people") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true, modifier = Modifier.fillMaxWidth(), enabled = !busy)
                 Text(if (account) "Complete first sign-in within" else "Invitation expires after", style = MaterialTheme.typography.labelLarge)
@@ -196,24 +191,12 @@ internal fun RegistrationScreen(serverId: String, serverName: String, remote: Re
                 Text(if (account) "The managed server uses a self-signed certificate. This QR allows it in Delta Chat; share only with people who trust this server." else "With a self-signed certificate, browsers may ask guests to trust the server first.", style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
                 if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
                 error?.let { Text(it, color = colors.error) }
-                Button(enabled = !busy && (account || (uses.toIntOrNull() ?: 0) in 1..999999), onClick = {
-                    busy = true; error = null; notice = null
-                    val targetOrigin = origin
-                    prefs.edit().putString("origin", targetOrigin).apply()
-                    scope.launch {
-                        try {
-                            val tokenBody = JSONObject().put("max_uses", if (account) 1 else uses.toInt()).put("comment", title.ifBlank { if (account) "Personal account" else "Invitation" }).apply { if (expiry.isNotBlank()) put("expires_in", expiry) }
-                            val token = request("POST", tokenBody).getString("token")
-                            if (account) {
-                                // Never retry this mutation: a lost reply may already have created an account.
-                                val guest = withContext(Dispatchers.IO) { if (phone) local.createGuest(token) else ssh!!.createGuest(token) }
-                                select(InviteLinks.login(guest.getString("dclogin_url"), targetOrigin))
-                            } else select(InviteLinks.invite(targetOrigin, token))
-                            create = false; refresh++
-                        } catch (e: CancellationException) { throw e }
-                        catch (_: Exception) { error = "Creation wasn’t confirmed. An invitation or account may already exist. Refresh invitations before creating another."; refresh++ }
-                        finally { busy = false }
-                    }
+                creationState.error?.let { Text(it, color = colors.error) }
+                if (creationState.uncertain) TextButton(onClick = { create = false; manage = true; refresh++ }) { Text("Review invitations") }
+                Button(enabled = !busy && !creationState.uncertain && (account || (uses.toIntOrNull() ?: 0) in 1..999999), onClick = {
+                    error = null; notice = null
+                    prefs.edit().putString("origin", origin).apply()
+                    creation.create(origin, account, uses.toIntOrNull() ?: 1, title, expiry)
                 }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Icon(if (account) Icons.Outlined.PersonAdd else Icons.Outlined.QrCode2, null); Spacer(Modifier.width(8.dp)); Text(if (account) "Create account QR" else "Create invite link") }
             }
         }
@@ -227,6 +210,7 @@ internal fun RegistrationScreen(serverId: String, serverName: String, remote: Re
             if (!loaded) Text("Invitations haven’t loaded yet.")
             else if (invitations.isEmpty()) Text("No invitations yet.", color = colors.onSurfaceVariant)
             error?.let { Text(it, color = colors.error) }
+            if (creationState.uncertain && loaded) TextButton(onClick = { creation.reviewed() }) { Text("I’ve checked invitations and accounts") }
             invitations.forEach { invitation ->
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Column(Modifier.weight(1f).clickable(enabled = invitation.active && InviteLinks.origin(origin) != null && !busy, onClickLabel = "Show invitation QR") { select(InviteLinks.invite(origin, invitation.token)); manage = false }.padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -241,7 +225,7 @@ internal fun RegistrationScreen(serverId: String, serverName: String, remote: Re
     }
     revoke?.let { invitation -> AlertDialog(onDismissRequest = { if (!busy) revoke = null }, title = { Text("Revoke ${invitation.name}?") }, text = { Text("Guests won’t be able to use this invitation. Accounts already created remain active.") }, confirmButton = {
         TextButton(enabled = !busy, onClick = {
-            busy = true
+            revoking = true
             scope.launch {
                 try {
                     request("DELETE", JSONObject().put("token", invitation.token))
@@ -249,7 +233,7 @@ internal fun RegistrationScreen(serverId: String, serverName: String, remote: Re
                     notice = "Invitation revoked."; revoke = null; refresh++
                 } catch (e: CancellationException) { throw e }
                 catch (_: Exception) { error = "Revocation wasn’t confirmed. Refresh to check its status."; revoke = null; refresh++ }
-                finally { busy = false }
+                finally { revoking = false }
             }
         }) { Text("Revoke", color = colors.error) }
     }, dismissButton = { TextButton(onClick = { revoke = null }, enabled = !busy) { Text("Cancel") } }) }
@@ -283,13 +267,8 @@ private fun invitationBitmap(payload: String): Bitmap? = runCatching {
     }
 }.getOrNull()
 
-private fun localInviteOrigin(context: Context): String {
-    val connectivity = context.getSystemService(ConnectivityManager::class.java)
-    val wifi = connectivity.activeNetwork?.takeIf { connectivity.getNetworkCapabilities(it)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true }
-    val address = wifi?.let { connectivity.getLinkProperties(it)?.linkAddresses?.firstOrNull { a -> a.address is Inet4Address && !a.address.isLoopbackAddress && !a.address.isAnyLocalAddress }?.address?.hostAddress }
-        ?: runCatching { NetworkInterface.getNetworkInterfaces().toList().filter { it.isUp && (it.name.startsWith("wlan") || it.name.startsWith("ap")) }.flatMap { it.inetAddresses.toList() }.firstOrNull { it is Inet4Address && !it.isLoopbackAddress && !it.isAnyLocalAddress }?.hostAddress }.getOrNull()
-    return address?.let { "https://$it:18443" }.orEmpty()
-}
+private fun localInviteOrigin(context: Context): String = GuestNetworks.phone(context)
+    .firstOrNull { it.network != GuestNetwork.Vpn }?.origin.orEmpty()
 
 private fun shareInvitationImage(context: Context, bitmap: Bitmap) {
     val dir = File(context.cacheDir, "invite-share").apply { mkdirs() }

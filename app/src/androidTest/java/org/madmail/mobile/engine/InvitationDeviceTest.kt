@@ -3,6 +3,8 @@ package org.madmail.mobile.engine
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.flow.first
 import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
@@ -15,6 +17,80 @@ import javax.net.ssl.SSLSocket
 import javax.net.ssl.TrustManagerFactory
 
 class InvitationDeviceTest {
+    @Test fun remoteInvitationsThroughSsh() = runBlocking(Dispatchers.IO) {
+        org.junit.Assume.assumeTrue(InstrumentationRegistry.getArguments().getString("remoteFixture") == "true")
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val server = org.madmail.mobile.core.RemoteServer("invite-fixture", "127.0.0.1", "fixture", 22222)
+        val engine = RemoteEngine.get(context, server)
+        val creation = InvitationCreation.get(context, server.id, server)
+        var account: String? = null
+        var token: String? = null
+        context.getSharedPreferences("ssh-host-keys", 0).edit().remove(server.id).commit()
+        try {
+            engine.inspectHost(); engine.acceptHost(); engine.connect("test-only-madmail-fixture")
+            assertTrue(engine.state.value.connected)
+            engine.install(ReleaseCatalog.releases(engine.state.value.architecture!!).first { it.version == "2.30.5" })
+            assertNull(engine.state.value.error)
+            assertTrue(engine.guestAddresses().isNotEmpty())
+            // Creation belongs to the server controller, with no screen coroutine or UI observer.
+            creation.create("https://server.tailnet.ts.net:18443", true, 1, "Remote invitation test", "1h")
+            val result = withTimeout(20000) { creation.state.first { !it.busy } }
+            assertNull(result.error)
+            assertTrue(result.code!!.contains("ih=server.tailnet.ts.net"))
+            assertTrue(result.code.contains("ip=11993")); assertTrue(result.code.contains("sp=11465"))
+            account = result.code.substringAfter("dclogin://").substringBefore('/')
+            val entries = engine.invitationRequest("GET").getJSONArray("tokens")
+            val item = (0 until entries.length()).map { entries.getJSONObject(it) }.single { it.optString("comment") == "Remote invitation test" }
+            token = item.getString("token")
+            assertEquals(1, item.getInt("used_count") + item.getInt("pending_reservations"))
+        } finally {
+            try {
+                account?.let { engine.adminRequest("/admin/accounts", "DELETE", JSONObject().put("username", it)) }
+                token?.let { engine.invitationRequest("DELETE", JSONObject().put("token", it)) }
+            } finally {
+                InvitationCreation.forget(server.id); engine.disconnect()
+                context.getSharedPreferences("ssh-host-keys", 0).edit().remove(server.id).commit()
+            }
+        }
+    }
+    @Test fun phoneNetworkAndCreationController() = runBlocking(Dispatchers.IO) {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val engine = LocalEngine.get(context)
+        val creation = InvitationCreation.get(context, "phone", null)
+        var token: String? = null
+        var account: String? = null
+        try {
+            engine.start()
+            val addresses = GuestNetworks.phone(context)
+            assertTrue("No network candidates on the connected test phone", addresses.isNotEmpty())
+            val wifi = addresses.first { it.network == org.madmail.mobile.core.GuestNetwork.Wifi }
+            assertTrue(GuestNetworks.checkPorts(wifi.origin).all { it.second })
+            assertEquals("madmail.local", engine.browserInviteHost(wifi.origin))
+            val before = engine.invitationRequest("GET").getJSONArray("tokens").length()
+            creation.create(wifi.origin, false, 2, "Blocked browser invitation test", "24h")
+            val blocked = withTimeout(15000) { creation.state.first { !it.busy } }
+            assertTrue(blocked.error!!.contains("Choose Account QR"))
+            assertFalse(blocked.uncertain)
+            assertEquals(before, engine.invitationRequest("GET").getJSONArray("tokens").length())
+            creation.create(wifi.origin, true, 1, "Controller invitation test", "24h")
+            // A second rapid tap must not create another token.
+            creation.create(wifi.origin, true, 1, "Duplicate invitation test", "24h")
+            val result = withTimeout(15000) { creation.state.first { !it.busy } }
+            assertNull(result.error)
+            account = result.code!!.substringAfter("dclogin://").substringBefore('/')
+            assertTrue(result.code.contains("ih=${wifi.host}"))
+            val entries = engine.invitationRequest("GET").getJSONArray("tokens")
+            val items = (0 until entries.length()).map { entries.getJSONObject(it) }
+            token = items.single { it.optString("comment") == "Controller invitation test" }.getString("token")
+            assertFalse(items.any { it.optString("comment") == "Duplicate invitation test" })
+            assertEquals(result.code, InvitationCreation.get(context, "phone", null).state.value.code)
+        } finally {
+            try {
+                account?.let { engine.adminRequest("/admin/accounts", "DELETE", JSONObject().put("username", it)) }
+                token?.let { engine.invitationRequest("DELETE", JSONObject().put("token", it)) }
+            } finally { InvitationCreation.forget("phone"); engine.stop() }
+        }
+    }
     @Test fun createAccountAuthenticateAndRevokeInvitation() = runBlocking(Dispatchers.IO) {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val engine = LocalEngine.get(context)

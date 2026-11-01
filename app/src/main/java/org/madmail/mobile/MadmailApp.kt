@@ -81,6 +81,7 @@ internal fun MadmailApp() {
                     else -> ServerSettingsScreen(serverId, serverName, remote, initiallyShowHosting = openHostingPreferences, onNavigate = { scope.launch { pageScroll.scrollTo(0) } }) {
                         remote?.let { saved -> scope.launch(Dispatchers.IO) { org.madmail.mobile.engine.RemoteEngine.get(context, saved).disconnect() } }
                         workspace.forget(serverId)
+                        org.madmail.mobile.engine.InvitationCreation.forget(serverId)
                         profiles.remove(serverId)
                         remotes = profiles.load()
                         selectServer("phone")

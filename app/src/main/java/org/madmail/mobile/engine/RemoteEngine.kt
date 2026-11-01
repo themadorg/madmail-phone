@@ -106,6 +106,13 @@ internal class RemoteEngine private constructor(private val context: Context, va
         if (tunnel == null) tunnel = requireSession().setPortForwardingL("127.0.0.1", 0, "127.0.0.1", 18080)
         AdminApi.newAccount("http://127.0.0.1:$tunnel/new", token)
     }
+    suspend fun guestAddresses(): List<org.madmail.mobile.core.GuestAddress> = mutex.withLock {
+        org.madmail.mobile.core.GuestAddresses.remote(exec("ip -o -4 addr show scope global"))
+    }
+    suspend fun browserInviteHost(origin: String): String? = mutex.withLock {
+        if (tunnel == null) tunnel = requireSession().setPortForwardingL("127.0.0.1", 0, "127.0.0.1", 18080)
+        AdminApi.browserInviteHost("http://127.0.0.1:$tunnel/inv/address-check", origin)
+    }
     suspend fun removeVersion(version: String) = operation {
         require(Regex("[0-9]+\\.[0-9]+\\.[0-9]+").matches(version))
         check(version != mutable.value.version)

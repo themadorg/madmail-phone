@@ -166,6 +166,10 @@ internal class LocalEngine private constructor(private val context: Context) {
         check(mutable.value.phase == EnginePhase.Running) { "Start hosting to create an account." }
         AdminApi.newAccount("http://127.0.0.1:18080/new", token)
     }
+    suspend fun browserInviteHost(origin: String): String? = mutex.withLock {
+        check(mutable.value.phase == EnginePhase.Running)
+        AdminApi.browserInviteHost("http://127.0.0.1:18080/inv/address-check", origin)
+    }
     companion object {
         @Volatile private var instance: LocalEngine? = null
         fun get(context: Context): LocalEngine = instance ?: synchronized(this) {
@@ -188,6 +192,17 @@ internal fun compareVersions(a: String, b: String): Int {
 internal class AdminRequestRejected(val status: Int) : IllegalStateException("Server rejected the request ($status).")
 
 internal object AdminApi {
+    fun browserInviteHost(endpoint: String, origin: String): String? {
+        val connection = URL(endpoint).openConnection() as HttpURLConnection
+        try {
+            connection.connectTimeout = 1500; connection.readTimeout = 3000
+            connection.instanceFollowRedirects = false
+            connection.setRequestProperty("Host", java.net.URI(requireNotNull(org.madmail.mobile.core.InviteLinks.origin(origin))).rawAuthority)
+            check(connection.responseCode == 200)
+            val html = connection.inputStream.use { String(it.readBytesLimited(512 * 1024)) }
+            return Regex("const host = \"([^\"]+)\"").find(html)?.groupValues?.get(1)
+        } finally { connection.disconnect() }
+    }
     fun overview(endpoint: String, token: String): JSONObject = request(endpoint, token, "/admin/overview", "GET")
     fun request(endpoint: String, token: String, resource: String, method: String, body: JSONObject = JSONObject()): JSONObject {
         val connection = URL(endpoint).openConnection() as HttpURLConnection
@@ -213,7 +228,7 @@ internal object AdminApi {
             connection.instanceFollowRedirects = false; connection.doOutput = true
             connection.setRequestProperty("Content-Type", "application/json")
             connection.outputStream.use { it.write(JSONObject().put("token", token).toString().toByteArray()) }
-            check(connection.responseCode == 200) { "Account creation was not confirmed. Refresh invitations before trying again." }
+            if (connection.responseCode !in 200..299) throw AdminRequestRejected(connection.responseCode)
             return JSONObject(String(connection.inputStream.use { it.readBytesLimited(64 * 1024) }))
         } finally { connection.disconnect() }
     }
