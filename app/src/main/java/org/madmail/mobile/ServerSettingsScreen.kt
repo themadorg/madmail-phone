@@ -102,6 +102,8 @@ internal fun ServerSettingsScreen(serverId: String, serverName: String, remote: 
                 SettingsGroup {
                     settingsPages.drop(7).forEach { item -> SettingsNavigation(item.title, item.subtitle, item.icon) { navigate(item.id) } }
                 }
+                HorizontalDivider()
+                AppLockSettings()
             }
             "connection" -> {
                 if (remote != null) {

@@ -15,14 +15,27 @@ import androidx.compose.ui.unit.dp
 import org.madmail.mobile.core.PortMode
 
 class MainActivity : ComponentActivity() {
+    private lateinit var appLock: AppLock
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        appLock = AppLock(this)
+        appLock.protectWindow()
         enableEdgeToEdge()
         setContent {
             MaterialTheme(colorScheme = madmailColors(isSystemInDarkTheme())) {
-                MadmailApp()
+                CompositionLocalProvider(LocalAppLock provides appLock) {
+                    if (appLock.locked) AppLockScreen(appLock) else MadmailApp()
+                }
             }
         }
+    }
+    override fun onStop() {
+        appLock.lock()
+        super.onStop()
+    }
+    override fun onDestroy() {
+        appLock.dispose()
+        super.onDestroy()
     }
 }
 

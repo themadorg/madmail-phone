@@ -6,6 +6,8 @@ A Kotlin Android host and management UI for a local Madmail server. Guests use D
 
 ## Current implementation
 
+See [feature status and remaining work](docs/feature-status.md) for the completion audit. Optional **App lock** in Settings protects management of every saved server with the phone's system authentication while hosting continues.
+
 ARM64 Android hosting with upstream Madmail 2.30.5: foreground service, start/stop, authenticated readiness, live overview metrics, persistent private database/TLS identity, and packaged-version selection. Engine startup verifies its pinned SHA-256. A small native launcher terminates the engine if its owning Android process dies.
 
 Android updates download a signed Madmail Mobile APK over HTTPS, check its package, signer and increasing app version, then hand installation to Android. Loose downloaded executables cannot be activated by a modern unrooted Android app. The version dialog loads stable releases directly from GitHub, marks installed versions, and offers Android packages when present. Releases without an APK remain visible. A signed package URL can also be supplied. Upstream has not published Android packages yet. Native updates create a cold private backup before first opening existing data with a newer engine. Automatic data downgrades are blocked.
