@@ -1,0 +1,25 @@
+# Native control panel
+
+Use standard Material 3 controls and system light/dark appearance. Prioritize a readable server state and one next action. Server, Registration, and Settings are the primary destinations. Empty states explain what is missing. QR codes stay black on white with an intact quiet zone. Support font scaling, scrolling, semantic labels, and 48dp controls. This bootstrap establishes functional layout; device visual validation is tracked separately.
+
+## Floating navigation
+
+User-directed liquid-glass navigation: a rounded floating dock with source-backed Haze blur, a subtle reflective edge, labeled icons, and a separate circular add-server action. Content scrolls beneath it with sufficient bottom clearance. Use an opaque fallback where blur is unavailable. Selection is semantic and animates color without locking interaction. System bars follow the device appearance through edge-to-edge setup.
+
+The add action opens a guided SSH setup sheet. Until transport exists, it explicitly offers connection-detail review only and never collects credentials or implies installation succeeded.
+
+## Server workspace navigation
+
+Overview, Invite and Settings are server-scoped buttons in the floating bottom dock. A fourth Server button opens a bottom-sheet picker; Add remains a separate circular action. There are no top tabs or top selector. All screen titles identify their owning server. Admin settings use expandable sections based on the web admin feature inventory; disconnected values remain explicitly not loaded.
+
+Dock controls are icon-only with accessible names and 48dp touch targets. The server control pairs its icon with a disclosure chevron to indicate the bottom-sheet selector. Visible navigation labels are omitted to keep the glass dock compact.
+
+## Server identities
+
+The server picker uses a compact list with an avatar, display name, host/connection subtitle and explicit current-server state. Switching uses the whole row. A header Edit mode changes rows into appearance-edit actions. The editor stays within the same sheet, with Back/Done navigation, unsaved-change protection, and separate Icon/Emoji choices. Per-server display names, built-in symbols, and custom emoji persist locally and appear in the dock and overview. Long names truncate in rows; a search field appears for more than five entries. No connection or server-side rename occurs during customization.
+
+The switcher has no redundant title or close button. An accessible pencil/check icon in the footer toggles editing beside Add remote server. Native swipe, outside tap, and Back dismiss the list.
+
+## Overview
+
+One continuous scroll, with all data visible. No accordions, large metric cards, or repeated navigation shortcuts. Use consistent outlined Material icons for sections, metrics, and actions. The server identity is the page heading. Hosting is one compact saturated violet action; Versions is a text button. Flat sections use a shared label/value column, tabular numerals, clear dividers, and 32dp separation. Neutral surfaces and strong violet accents support both light and dark appearances. Counts use locale grouping; bytes use readable units; technical ports and versions retain their exact strings. Connection values copy on tap with a visible copy/check affordance, brief confirmation, and haptic feedback. Separate combined counters into individually labeled rows. Keep actual listener ports distinct from saved preferences. Unknown metrics remain dashes, never zeros. Invite and Settings stay directly accessible in the dock. Support wrapping names/values, font scaling, semantic headings and 48dp interactive targets.

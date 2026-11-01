@@ -1,0 +1,15 @@
+#!/bin/sh
+# Test-only service shim. Exercises real engine/process/filesystem operations, not systemd itself.
+set -eu
+pid=/run/madmail-fixture.pid
+case "$1" in
+ cat) [ "$2" = madmail-mobile.service ] && [ -f /etc/systemd/system/madmail-mobile.service ] ;;
+ daemon-reload) exit 0 ;;
+ is-active) [ -f "$pid" ] && kill -0 "$(cat "$pid")" 2>/dev/null ;;
+ start)
+   start-stop-daemon --start --background --make-pidfile --pidfile "$pid" --chuid madmail-mobile --chdir /var/lib/madmail-mobile --exec /opt/madmail-mobile/current -- --config /etc/madmail-mobile/chatmail.toml --state-dir /var/lib/madmail-mobile run
+   sleep 2
+   ;;
+ stop) start-stop-daemon --stop --oknodo --retry TERM/15/KILL/5 --pidfile "$pid"; rm -f "$pid" ;;
+ *) exit 1 ;;
+esac
