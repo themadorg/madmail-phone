@@ -4,7 +4,11 @@
 
 `LocalEngine` serializes lifecycle/version changes. `HostingService` owns the process, foreground notification and wake lock. The UI observes state flows. Startup checks the packaged SHA-256, rejects data downgrades, writes first-run config only when absent, checks port availability, and launches the upstream static ARM64 executable from Android's extracted native library directory. The parent-death launcher sets `PR_SET_PDEATHSIG` before exec. Native output is drained without logging credentials or account data.
 
-Readiness requires an authenticated `/admin/overview` response and reachable SMTP, IMAP and HTTPS ports; monitoring refreshes every five seconds. Stop sends SIGTERM, waits up to 15 seconds, then forces termination with an explicit failure state if needed. There is no automatic restart or boot hosting. Force-stop ends hosting; no promise of uninterrupted operation under Doze/OEM power restrictions is made.
+Readiness requires an authenticated `/admin/overview` response and reachable SMTP, IMAP and HTTPS ports; monitoring refreshes every five seconds. Stop sends SIGTERM, waits up to 15 seconds, then forces termination with an explicit failure state if needed. The foreground service is sticky and survives task removal: Android can recreate it after process reclamation while a persisted user-started session remains requested. Stop clears that request before shutdown; engine failures clear it too, avoiding crash loops. There is no boot receiver, automatic UI-triggered restart, or force-stop bypass. Recovery timing belongs to Android, so uninterrupted operation is not guaranteed.
+
+Overview exposes **Allow background hosting**, opening Android's battery-optimization exemption prompt. The app checks the actual exemption again on resume and shows **Background access allowed** only when granted. A partial wake lock is held only during hosting. The exemption lets the core local-network server request CPU/network availability during idle; it is not an OEM-wide or indefinite-uptime guarantee. Leaving the app or dismissing its task is distinct from Android's explicit Force stop/Stop app actions, which remain respected. Background hosting uses additional battery.
+
+`tests/background_hosting.py` uses bounded, pinned-certificate probes of HTTPS/IMAP/SMTP through temporary USB forwards. Its `recover` mode deliberately kills only the Madmail application process and requires Android to restore all three listeners without an app launch; `stopped` checks that an explicit UI stop stays stopped; `monitor` checks unchanged process identity and listeners while the UI is backgrounded or the screen is off. UI and battery-setting actions remain manual/device-panel actions, not ADB shortcuts. Temporary forwards are removed on completion.
 
 Paths under private app files:
 
@@ -60,6 +64,11 @@ The container uses a minimal `systemctl` shim to manage a real unprivileged engi
 Not yet validated: a signed newer Android package through the installer, a cross-version database migration/restore, long screen-off hosting, a real systemd VPS, privileged Android port routing, or end-to-end Delta Chat guest onboarding on an isolated LAN.
 
 ### Recorded checks (2026-11-01)
+
+- Background-hosting update: debug build, JVM tests and lint passed; installed in place on Pixel 6a / Android 17 with existing server and accounts preserved. Python regression script passes Ruff and isort checks.
+- Android's battery-exemption prompt was accepted through the device UI; both the app and system diagnostics confirmed exemption.
+- With Madmail backgrounded, killing only its app process caused Android to restore the sticky foreground service and all three TLS listeners without reopening the app. Explicit Stop stayed stopped for 15 seconds; hosting was then restarted.
+- Background monitoring passed 12 HTTPS/IMAP/SMTP samples over 60 seconds with unchanged app process. The phone briefly entered screen-off Dozing but woke again during observation, so this is not sustained screen-off or deep-idle validation. USB remained connected. Hosting was left running.
 
 - Pixel 6a / Android 17: 3 instrumentation tests passed, including the opt-in SSH fixture. Host-key changes and active-version removal were rejected. Local immediate restart preserved both TLS certificate and admin token.
 - 7 JVM tests passed; debug APK/test APK builds and lint passed (warnings remain).

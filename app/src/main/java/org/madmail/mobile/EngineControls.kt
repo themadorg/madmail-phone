@@ -3,6 +3,9 @@ package org.madmail.mobile
 import android.Manifest
 import android.content.Intent
 import android.os.Build
+import android.os.PowerManager
+import android.net.Uri
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
@@ -15,6 +18,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -41,9 +47,41 @@ internal fun EngineControls() {
             }
             TextButton(onClick = { versions = true }, modifier = Modifier.heightIn(min = 48.dp)) { Icon(Icons.Outlined.Inventory2, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Versions") }
         }
+        BackgroundHostingAccess()
         if (state.error != null) Text(state.error!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
     }
     if (versions) EngineVersionsDialog { versions = false }
+}
+
+@Composable
+private fun BackgroundHostingAccess() {
+    val context = LocalContext.current
+    val power = remember { context.getSystemService(PowerManager::class.java) }
+    var allowed by remember { mutableStateOf(power.isIgnoringBatteryOptimizations(context.packageName)) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val owner = LocalLifecycleOwner.current
+    val request = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        allowed = power.isIgnoringBatteryOptimizations(context.packageName)
+    }
+    DisposableEffect(owner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) allowed = power.isIgnoringBatteryOptimizations(context.packageName)
+        }
+        owner.lifecycle.addObserver(observer)
+        onDispose { owner.lifecycle.removeObserver(observer) }
+    }
+    TextButton(onClick = {
+        error = null
+        val intent = if (allowed) Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+            else Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${context.packageName}"))
+        runCatching { request.launch(intent) }.onFailure { error = "Open Android Settings → Apps → Madmail → Battery and allow background use." }
+    }, modifier = Modifier.heightIn(min = 48.dp)) {
+        Icon(if (allowed) Icons.Outlined.BatteryFull else Icons.Outlined.BatteryAlert, null, Modifier.size(20.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(if (allowed) "Background access allowed" else "Allow background hosting")
+    }
+    if (!allowed) Text("Keep connections available with the screen off. Uses more battery.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
 }
 
 @Composable
