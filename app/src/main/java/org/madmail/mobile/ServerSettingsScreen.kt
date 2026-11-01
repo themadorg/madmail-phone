@@ -46,7 +46,7 @@ private val settingsPages = listOf(
     SettingsPage("federation", "Federation", "Delivery policy and domain signing", Icons.Outlined.Hub),
     SettingsPage("proxies", "Proxies", "Shadowsocks and HTTP proxy", Icons.Outlined.VpnLock),
     SettingsPage("administration", "Administration", "Web dashboard and server restart", Icons.Outlined.AdminPanelSettings),
-    SettingsPage("connection", "Connection", "Hosting and SSH connection details", Icons.Outlined.Link),
+    SettingsPage("connection", "Connection", "Hosting and connection details", Icons.Outlined.Link),
 )
 
 @Composable
@@ -89,7 +89,7 @@ internal fun ServerSettingsScreen(serverId: String, serverName: String, remote: 
         if (state.restartRequired) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Icon(Icons.Outlined.RestartAlt, null, tint = colors.primary)
             Text("Saved changes need a restart.", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-            TextButton(onClick = { restart = true }, enabled = ready && !state.busy) { Text("Restart") }
+            TextButton(onClick = { restart = true }, enabled = ready && !state.busy && (remote == null || remoteState?.managed == true)) { Text("Restart") }
         }
         when (page) {
             "root" -> {
@@ -106,11 +106,14 @@ internal fun ServerSettingsScreen(serverId: String, serverName: String, remote: 
             "connection" -> {
                 if (remote != null) {
                     SettingsGroup {
+                        if (remoteState?.transport == "API") SettingsCopyRow("Admin API", remoteState.apiEndpoint ?: "Not configured", Icons.Outlined.Api)
+                        else {
                         SettingsCopyRow("SSH host", remote.host, Icons.Outlined.Dns)
                         SettingsCopyRow("Username", remote.user, Icons.Outlined.PersonOutline)
                         SettingsCopyRow("SSH port", remote.port.toString(), Icons.Outlined.SettingsEthernet)
                         val fingerprint = RemoteEngine.get(context, remote).fingerprint
                         fingerprint?.let { SettingsCopyRow("Host fingerprint", it, Icons.Outlined.Fingerprint) }
+                        }
                     }
                     RemoteControls(remote)
                     TextButton(onClick = { remove = true }) { Icon(Icons.Outlined.DeleteOutline, null, tint = colors.error); Spacer(Modifier.width(8.dp)); Text("Remove saved server", color = colors.error) }
@@ -205,7 +208,7 @@ internal fun ServerSettingsScreen(serverId: String, serverName: String, remote: 
                     }
                 }
                 if (page == "administration") {
-                    SettingsNavigation("Restart server", if (remote == null) "Restart the phone’s Madmail process" else "Restart the managed service over SSH", Icons.Outlined.RestartAlt, ready && !state.busy) { restart = true }
+                    SettingsNavigation("Restart server", if (remote == null) "Restart the phone’s Madmail process" else if (remoteState?.managed == true) "Restart the managed service over SSH" else "Requires the app-managed SSH service", Icons.Outlined.RestartAlt, ready && !state.busy && (remote == null || remoteState?.managed == true)) { restart = true }
                 }
             }
         }

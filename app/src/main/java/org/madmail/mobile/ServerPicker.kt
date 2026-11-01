@@ -56,7 +56,11 @@ internal fun ServerPicker(selectedId: String, remotes: List<RemoteServer>, ident
     var editing by remember { mutableStateOf<String?>(null) }
     var editMode by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
-    val entries = listOf(Triple("phone", "This phone", "On this device")) + remotes.map { Triple(it.id, it.host, it.address) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val entries = listOf(Triple("phone", "This phone", "On this device")) + remotes.map {
+        val options = context.getSharedPreferences("remote-options-${it.id}", android.content.Context.MODE_PRIVATE)
+        Triple(it.id, it.host, if (options.getString("preferred", "ssh") == "api") "Admin API · ${it.host}" else it.address)
+    }
     SideEffect { onEditing(editing != null) }
     DisposableEffect(Unit) { onDispose { onEditing(false) } }
     val editId = editing

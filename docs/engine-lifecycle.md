@@ -20,7 +20,7 @@ The default bundled release is 2.30.5, source revision `22db460`, upstream `madm
 
 ## Remote SSH
 
-The app probes the server's host key without sending a password. The user verifies the SHA-256 fingerprint, pins the exact key, then supplies the password. Changed keys are refused. Credentials are not persisted. This first implementation supports password authentication only, and root or passwordless sudo for lifecycle operations.
+The app probes and pins the server's SSH host key before authentication. Generated/imported keys and memory-only passwords are supported; lifecycle operations need root or passwordless sudo. Existing API management is available through a supplied token over SSH or a trusted HTTPS endpoint. See [remote authentication](remote-authentication.md) for storage, capabilities and validation.
 
 Releases come from `themadorg/madmail` via GitHub HTTPS metadata. Only stable numeric releases with a matching ARM64/AMD64 musl asset and GitHub SHA-256 digest are offered. Downloads are checked locally and again after copying into a root-owned remote path. This validates release integrity against GitHub metadata; it is not independent offline signature verification.
 

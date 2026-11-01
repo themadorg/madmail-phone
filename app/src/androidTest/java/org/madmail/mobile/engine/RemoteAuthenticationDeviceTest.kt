@@ -81,6 +81,19 @@ class RemoteAuthenticationDeviceTest {
             File(context.cacheDir, "auth-fixture-token").delete()
         }
     }
+    @Test fun cleanupUiFixture() {
+        val id = InstrumentationRegistry.getArguments().getString("uiFixtureId")
+        org.junit.Assume.assumeTrue(id != null)
+        val profiles = org.madmail.mobile.core.ServerProfiles(context)
+        val server = profiles.load().single { it.id == id }
+        check(server.host == "auth-preview.invalid")
+        RemoteCredentials(context, server.id).delete()
+        context.getSharedPreferences("remote-options-${server.id}", 0).edit().clear().commit()
+        context.getSharedPreferences("ssh-host-keys", 0).edit().remove(server.id).commit()
+        profiles.remove(server.id)
+        assertFalse(profiles.load().any { it.id == server.id })
+        assertFalse(RemoteCredentials(context, server.id).hasKey())
+    }
     @Test fun cleanupFixtureCredentials() {
         for (id in listOf("auth-generated", "auth-imported", "auth-existing")) RemoteCredentials(context, id).delete()
         File(context.cacheDir, "auth-fixture.pub").delete()

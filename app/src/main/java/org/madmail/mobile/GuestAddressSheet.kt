@@ -23,6 +23,7 @@ import org.madmail.mobile.engine.*
 internal fun GuestAddressSheet(origin: String, remote: RemoteServer?, onDismiss: () -> Unit, onSave: (String) -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val apiOnly = remote?.let { RemoteEngine.get(context, it).state.value.transport == "API" } == true
     var draft by remember { mutableStateOf(origin) }
     var addresses by remember { mutableStateOf<List<GuestAddress>>(emptyList()) }
     var loading by remember { mutableStateOf(false) }
@@ -32,7 +33,7 @@ internal fun GuestAddressSheet(origin: String, remote: RemoteServer?, onDismiss:
     var checks by remember { mutableStateOf<List<Pair<Int, Boolean>>?>(null) }
     LaunchedEffect(refresh) {
         loading = true
-        try { addresses = withContext(Dispatchers.IO) { if (remote == null) GuestNetworks.phone(context) else RemoteEngine.get(context, remote).guestAddresses() } }
+        try { addresses = withContext(Dispatchers.IO) { if (remote == null) GuestNetworks.phone(context) else if (apiOnly) emptyList() else RemoteEngine.get(context, remote).guestAddresses() } }
         catch (e: CancellationException) { throw e }
         catch (_: Exception) { feedback = "Couldn’t read server addresses over SSH. Reconnect, or enter its guest-facing address below." }
         finally { loading = false }
@@ -47,8 +48,8 @@ internal fun GuestAddressSheet(origin: String, remote: RemoteServer?, onDismiss:
             Text(if (remote == null) "Choose the network your guests will use." else "These addresses belong to the remote server. Choose one your guests can reach.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
             if (!loading && addresses.isEmpty()) Text(if (remote == null) "No Wi-Fi, hotspot or VPN address detected. Connect a network and refresh, or enter an address." else "No interface addresses available. Enter the server’s public name or Tailscale address.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            if (remote != null) GuestAddresses.origin(remote.host)?.let { value ->
-                ListItem(headlineContent = { Text("SSH host address") }, supportingContent = { Text(value) }, leadingContent = { Icon(Icons.Outlined.Dns, null) }, trailingContent = { if (draft == value) Icon(Icons.Outlined.Check, "Selected") }, modifier = Modifier.clickable { choose(value, "SSH host address") })
+            if (remote != null) (RemoteEngine.get(context, remote).guestOrigin ?: GuestAddresses.origin(remote.host))?.let { value ->
+                ListItem(headlineContent = { Text(if (apiOnly) "API server address" else "SSH host address") }, supportingContent = { Text(value) }, leadingContent = { Icon(Icons.Outlined.Dns, null) }, trailingContent = { if (draft == value) Icon(Icons.Outlined.Check, "Selected") }, modifier = Modifier.clickable { choose(value, "Server address") })
             }
             addresses.forEach { address ->
                 ListItem(headlineContent = { Text(address.network.label) }, supportingContent = { Text("${address.host} · ${address.device}") }, leadingContent = {

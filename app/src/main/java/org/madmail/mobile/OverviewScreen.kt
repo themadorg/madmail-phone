@@ -72,7 +72,7 @@ internal fun OverviewScreen(name: String, identity: ServerIdentity, remote: Remo
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         val statusColor = if (running) overviewHealthyColor() else colors.onSurfaceVariant
                         Icon(if (running) Icons.Outlined.CheckCircle else Icons.Outlined.RadioButtonUnchecked, null, Modifier.size(16.dp), tint = statusColor)
-                        Text(if (phone) "This phone · ${engineState.phase.name}" else "SSH · ${remoteState?.status ?: "Not connected"}", style = MaterialTheme.typography.bodyMedium, color = statusColor)
+                        Text(if (phone) "This phone · ${engineState.phase.name}" else "${remoteState?.transport ?: "SSH"} · ${remoteState?.status ?: "Not connected"}", style = MaterialTheme.typography.bodyMedium, color = statusColor)
                     }
                 }
             }
@@ -124,13 +124,15 @@ internal fun OverviewScreen(name: String, identity: ServerIdentity, remote: Remo
             OverviewDetail(Icons.Outlined.NotificationsNone, "Push notifications", metric("push", "successful_notifications"))
             OverviewDetail(Icons.Outlined.History, "Message retention", metric("message_retention", "retention"))
         }
-        OverviewSection(if (phone) "Connection" else "SSH connection", Icons.Outlined.Link) {
+        OverviewSection("Connection", Icons.Outlined.Link) {
             OverviewDetail(Icons.Outlined.Inventory2, "Madmail version", version ?: metric("version"), copyable = true)
             if (phone) {
                 OverviewDetail(Icons.Outlined.Upload, if (running) "SMTP TLS port" else "Preferred SMTP port", if (running) "11465" else ports.smtp.toString(), copyable = true)
                 OverviewDetail(Icons.Outlined.Download, if (running) "IMAP TLS port" else "Preferred IMAP port", if (running) "11993" else ports.imap.toString(), copyable = true)
                 if (running) OverviewDetail(Icons.Outlined.Lock, "HTTPS port", "18443", copyable = true)
                 OverviewDetail(Icons.Outlined.Shield, if (running) "Access" else "Preferred access", if (running || !standardPorts) "No root required" else "Root")
+            } else if (remoteState?.transport == "API") {
+                OverviewDetail(Icons.Outlined.Api, "Admin API", remoteState.apiEndpoint ?: "Not configured", copyable = true)
             } else {
                 OverviewDetail(Icons.Outlined.Dns, "Host", remote!!.host, copyable = true)
                 OverviewDetail(Icons.Outlined.PersonOutline, "User", remote.user, copyable = true)

@@ -90,7 +90,7 @@ Repository source inspected during planning; no Android Rust compile or real-cli
 
 ## Remote SSH setup addition
 
-The floating + action opens a setup sheet for hostname/IP, SSH user and port. Current scope is UI and detail review only. Next: SSH transport with host-key fingerprint verification before credentials, password/key authentication through secure input, privilege preflight, OS/architecture compatibility checks, pinned release verification, an exact install plan, streamed redacted progress, and post-install health checks. Existing Madmail installs must be detected before mutation; upgrades require a separate plan. Credentials are never logged or saved in plain preferences. Ambiguous remote failures require status reconciliation before retry. No credential entry or remote shell execution exists in the current build.
+The floating + action opens SSH or Admin API setup. Connection supports generated/imported SSH keys, passwords, supplied API tokens over a pinned SSH tunnel, and HTTPS API-only access. Lifecycle changes remain restricted to app-owned SSH installs. See [remote authentication](remote-authentication.md) and [engine lifecycle](engine-lifecycle.md) for current implementation and limits.
 
 ## Server selection
 

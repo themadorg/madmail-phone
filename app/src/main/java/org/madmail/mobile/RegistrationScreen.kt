@@ -66,7 +66,7 @@ internal fun RegistrationScreen(serverId: String, serverName: String, remote: Re
     val remoteState = ssh?.state?.collectAsState()?.value
     val ready = if (phone) localState.phase == EnginePhase.Running else remoteState?.connected == true && remoteState.status.startsWith("Running")
     val prefs = remember(serverId) { context.getSharedPreferences("invite-$serverId", Context.MODE_PRIVATE) }
-    var origin by remember(serverId) { mutableStateOf(prefs.getString("origin", null) ?: if (phone) localInviteOrigin(context) else GuestAddresses.origin(remote!!.host).orEmpty()) }
+    var origin by remember(serverId) { mutableStateOf(prefs.getString("origin", null) ?: if (phone) localInviteOrigin(context) else ssh?.guestOrigin ?: GuestAddresses.origin(remote!!.host).orEmpty()) }
     var code by remember(serverId) { mutableStateOf(initialEndpoint) }
     var invitations by remember(serverId) { mutableStateOf<List<Invitation>>(emptyList()) }
     var loaded by remember(serverId) { mutableStateOf(false) }

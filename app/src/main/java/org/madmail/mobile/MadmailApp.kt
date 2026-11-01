@@ -82,6 +82,9 @@ internal fun MadmailApp() {
                         remote?.let { saved -> scope.launch(Dispatchers.IO) { org.madmail.mobile.engine.RemoteEngine.get(context, saved).disconnect() } }
                         workspace.forget(serverId)
                         org.madmail.mobile.engine.InvitationCreation.forget(serverId)
+                        org.madmail.mobile.engine.RemoteCredentials(context, serverId).delete()
+                        context.getSharedPreferences("ssh-host-keys", android.content.Context.MODE_PRIVATE).edit().remove(serverId).apply()
+                        context.getSharedPreferences("remote-options-$serverId", android.content.Context.MODE_PRIVATE).edit().clear().apply()
                         profiles.remove(serverId)
                         remotes = profiles.load()
                         selectServer("phone")
@@ -102,8 +105,9 @@ internal fun MadmailApp() {
 
     }
     if (addServer) ModalBottomSheet(onDismissRequest = { addServer = false }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-        RemoteSetup(onClose = { addServer = false }, onSave = { host, user, port ->
+        RemoteSetup(onClose = { addServer = false }, onSave = { host, user, port, apiEndpoint ->
             val saved = profiles.save(host, user, port)
+            context.getSharedPreferences("remote-options-${saved.id}", android.content.Context.MODE_PRIVATE).edit().putString("preferred", if (apiEndpoint == null) "ssh" else "api").apply { if (apiEndpoint != null) putString("api-endpoint", apiEndpoint) }.apply()
             remotes = profiles.load()
             selectServer(saved.id)
             page = 0
@@ -141,38 +145,41 @@ private fun GlassDock(haze: HazeState, page: Int, choosingServer: Boolean, serve
 
         }
         FilledIconButton(onClick = onAdd, modifier = Modifier.size(52.dp).clip(CircleShape).hazeEffect(haze, glass).border(1.dp, edge, CircleShape), colors = IconButtonDefaults.filledIconButtonColors(containerColor = Color.Transparent, contentColor = colors.primary)) {
-            Icon(Icons.Outlined.Add, "Set up a remote server with SSH", Modifier.size(28.dp))
+            Icon(Icons.Outlined.Add, "Set up a remote server", Modifier.size(28.dp))
         }
     }
 }
 
 @Composable
-private fun RemoteSetup(onClose: () -> Unit, onSave: (String, String, Int) -> Unit) {
+private fun RemoteSetup(onClose: () -> Unit, onSave: (String, String, Int, String?) -> Unit) {
+    var apiOnly by rememberSaveable { mutableStateOf(false) }
     var host by rememberSaveable { mutableStateOf("") }
     var user by rememberSaveable { mutableStateOf("root") }
     var port by rememberSaveable { mutableStateOf("22") }
     var review by rememberSaveable { mutableStateOf(false) }
-    val valid = host.isNotBlank() && host.none { it.isWhitespace() || it in "/@;" } && user.matches(Regex("[a-zA-Z_][a-zA-Z0-9_-]*")) && port.toIntOrNull() in 1..65535
+    val apiAddress = org.madmail.mobile.engine.ApiEndpoint.normalize(host)
+    val valid = if (apiOnly) apiAddress != null else host.isNotBlank() && host.none { it.isWhitespace() || it in "/@;" } && user.matches(Regex("[a-zA-Z_][a-zA-Z0-9_-]*")) && port.toIntOrNull() in 1..65535
     Column(Modifier.fillMaxWidth().imePadding().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
         Icon(Icons.Outlined.Dns, null, Modifier.size(32.dp), tint = MaterialTheme.colorScheme.primary)
         Text("Set up a remote server", style = MaterialTheme.typography.headlineSmall)
-        Text("Install and manage Madmail on your own server over SSH.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
-            Text("SSH installation is coming next. Save connection details to switch between servers. This build cannot connect or install yet.", Modifier.padding(16.dp), style = MaterialTheme.typography.bodyMedium)
+        Text("Connect with an SSH key, password, or admin API token.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(!apiOnly, { apiOnly = false; review = false }, label = { Text("SSH") })
+            FilterChip(apiOnly, { apiOnly = true; review = false }, label = { Text("Admin API") })
         }
-        OutlinedTextField(host, { host = it; review = false }, label = { Text("Server address") }, placeholder = { Text("IP address or hostname") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        OutlinedTextField(host, { host = it; review = false }, label = { Text(if (apiOnly) "Admin API URL" else "Server address") }, placeholder = { Text(if (apiOnly) "https://mail.example.org/api/admin" else "IP address or hostname") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        if (!apiOnly) Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedTextField(user, { user = it; review = false }, label = { Text("SSH user") }, singleLine = true, modifier = Modifier.weight(1f))
             OutlinedTextField(port, { port = it; review = false }, label = { Text("Port") }, singleLine = true, modifier = Modifier.width(96.dp))
         }
         Text("You’ll verify the server identity, choose authentication, and review the installation before any changes are made.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (review) {
             Text("Connection details", style = MaterialTheme.typography.titleMedium)
-            Text("$user@$host · port $port")
-            Text("Not connected. Authentication and installation are not available in this build.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(if (apiOnly) apiAddress.orEmpty() else "$user@$host · port $port")
+            Text("Next, generate or import an SSH key, or connect with the admin API.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Button(onClick = { review = true }, enabled = valid && !review, modifier = Modifier.fillMaxWidth()) { Text("Review details") }
-        if (review && valid) Button(onClick = { onSave(host.trim(), user.trim(), port.toInt()) }, modifier = Modifier.fillMaxWidth()) { Text("Save server") }
+        if (review && valid) Button(onClick = { onSave(if (apiOnly) java.net.URI(apiAddress!!).host else host.trim(), if (apiOnly) "root" else user.trim(), if (apiOnly) 22 else port.toInt(), if (apiOnly) apiAddress else null) }, modifier = Modifier.fillMaxWidth()) { Text("Save server") }
         TextButton(onClick = onClose, modifier = Modifier.align(Alignment.CenterHorizontally)) { Text("Done") }
     }
 }
