@@ -15,6 +15,8 @@ Run `./scripts/create-release-key.sh` in your terminal. It prompts twice without
 
 Later, create the `release` environment in your GitHub repository and configure its trusted refs. Run `./scripts/github-signing-secrets.sh OWNER/REPOSITORY` while authenticated with `gh` to that repository. It validates your existing key password, transfers the four secrets and certificate fingerprint to that environment, and does not regenerate the key or persist the password. Reusing the same key preserves update compatibility.
 
+After key creation, `./scripts/local-release.sh` builds/tests the release, prompts privately for the existing password, and signs/packages the APK and full sharing ZIP. Set `MADMAIL_ENGINE_SOURCE` if your pinned engine checkout is outside `build/engine-source`. The password is used only for that process and is not saved. Commit tracked source changes first so the source archive matches the release.
+
 Create or reuse a permanent Android release signing key, keep an offline backup, and put these secrets in GitHub's **release** environment:
 
 | Secret | Value |
