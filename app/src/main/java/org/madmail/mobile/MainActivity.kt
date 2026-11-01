@@ -29,9 +29,9 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
-    override fun onStop() {
+    override fun onPause() {
         appLock.lock()
-        super.onStop()
+        super.onPause()
     }
     override fun onDestroy() {
         appLock.dispose()
