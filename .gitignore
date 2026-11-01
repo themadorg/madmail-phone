@@ -6,3 +6,9 @@ local.properties
 *.iml
 .DS_Store
 app/src/main/jniLibs/
+.ruff_cache/
+*.jks
+*.keystore
+*.p12
+keystore.properties
+dist/

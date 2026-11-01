@@ -22,6 +22,10 @@ Phone ports: SMTP TLS **11465**, IMAP TLS **11993**, HTTPS **18443**. The intern
 
 See [the product and architecture brainstorm](docs/architecture.md) for scope, root design, compatibility gates, and implementation milestones.
 
+## Release candidates
+
+See [release setup and signing](docs/releasing.md) for CI, protected signing credentials, artifacts, versioning and acceptance gates. `release.properties` owns the distribution version. GitHub workflows build artifacts without publishing automatically.
+
 ## Build
 
 Requires JDK 17, Android SDK 35, NDK 28.2.13676358, Rust/rustup, uv, bun, and network access for initial dependencies. This build supports ARM64 Android devices. Set `ANDROID_HOME` or local `sdk.dir` in `local.properties`.

@@ -1,0 +1,62 @@
+name: Android release candidate
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    environment: release
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Check tag and version
+        run: bash scripts/check-release-version.sh
+      - uses: ./.github/actions/setup-build
+      - name: Validate before exposing signing credentials
+        run: ./gradlew --no-daemon :app:testDebugUnitTest :app:lintRelease :app:assembleRelease
+      - name: Sign and verify release
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          MADMAIL_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          MADMAIL_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          MADMAIL_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          EXPECTED_SIGNER_SHA256: ${{ vars.ANDROID_SIGNER_SHA256 }}
+        run: |
+          set -euo pipefail
+          : "${KEYSTORE_BASE64:?Set ANDROID_KEYSTORE_BASE64 in the release environment}"
+          : "${MADMAIL_STORE_PASSWORD:?Missing store password}"
+          : "${MADMAIL_KEY_ALIAS:?Missing key alias}"
+          : "${MADMAIL_KEY_PASSWORD:?Missing key password}"
+          : "${EXPECTED_SIGNER_SHA256:?Set the expected release certificate SHA-256}"
+          export MADMAIL_KEYSTORE="$RUNNER_TEMP/release.jks"
+          trap 'rm -f "$MADMAIL_KEYSTORE"' EXIT
+          umask 077
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$MADMAIL_KEYSTORE"
+          unset KEYSTORE_BASE64
+          ./gradlew --no-daemon -PrequireReleaseSigning=true :app:assembleRelease
+          uv run python scripts/verify-apk.py app/build/outputs/apk/release/app-release.apk --signed
+      - name: Package APK and corresponding source
+        env:
+          EXPECTED_SIGNER_SHA256: ${{ vars.ANDROID_SIGNER_SHA256 }}
+        run: ./scripts/package-release.sh
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: madmail-release-${{ github.sha }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30
+      - name: Validation reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-checks-${{ github.sha }}
+          path: app/build/reports/
+          retention-days: 14

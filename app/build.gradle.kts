@@ -1,10 +1,16 @@
 import java.security.MessageDigest
+import java.util.Properties
 
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
+val releaseVersion = Properties().apply { rootProject.file("release.properties").inputStream().use { load(it) } }
+val signingValues = listOf("MADMAIL_KEYSTORE", "MADMAIL_STORE_PASSWORD", "MADMAIL_KEY_ALIAS", "MADMAIL_KEY_PASSWORD")
+    .associateWith { providers.environmentVariable(it).orNull }
+val hasSigning = signingValues.values.all { !it.isNullOrBlank() }
+check(signingValues.values.all { it.isNullOrBlank() } || hasSigning) { "Supply all four MADMAIL signing environment variables, or none." }
 android {
     namespace = "org.madmail.mobile"
     compileSdk = 35
@@ -12,10 +18,29 @@ android {
         applicationId = "org.madmail.mobile"
         minSdk = 26
         targetSdk = 35
-        versionCode = providers.gradleProperty("appVersionCode").orNull?.toInt() ?: 1
-        versionName = providers.gradleProperty("appVersionName").orNull ?: "0.1.0-dev"
+        versionCode = (providers.gradleProperty("appVersionCode").orNull ?: releaseVersion.getProperty("versionCode")).toInt().also {
+            require(it in 1..2100000000) { "Invalid Android version code" }
+        }
+        versionName = providers.gradleProperty("appVersionName").orNull ?: releaseVersion.getProperty("versionName")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk { abiFilters += "arm64-v8a" }
+    }
+    signingConfigs {
+        if (hasSigning) create("distribution") {
+            storeFile = file(signingValues.getValue("MADMAIL_KEYSTORE")!!)
+            storePassword = signingValues.getValue("MADMAIL_STORE_PASSWORD")
+            keyAlias = signingValues.getValue("MADMAIL_KEY_ALIAS")
+            keyPassword = signingValues.getValue("MADMAIL_KEY_PASSWORD")
+        }
+    }
+    buildTypes {
+        getByName("debug") { versionNameSuffix = "-dev" }
+        getByName("release") {
+            isDebuggable = false
+            // Keep reflective SSH/crypto dependencies intact until R8 has device coverage.
+            isMinifyEnabled = false
+            if (hasSigning) signingConfig = signingConfigs.getByName("distribution")
+        }
     }
     buildFeatures { compose = true }
     packaging {
@@ -43,6 +68,15 @@ tasks.register("verifyPackagedEngine") {
     }
 }
 tasks.named("preBuild").configure { dependsOn("verifyPackagedEngine") }
+tasks.register("verifyReleaseSigning") {
+    doLast {
+        if (providers.gradleProperty("requireReleaseSigning").orNull == "true") {
+            check(hasSigning) { "Release signing is required. Configure MADMAIL signing environment variables." }
+            check(file(signingValues.getValue("MADMAIL_KEYSTORE")!!).isFile) { "Release keystore is missing." }
+        }
+    }
+}
+tasks.matching { it.name == "preReleaseBuild" }.configureEach { dependsOn("verifyReleaseSigning") }
 dependencies {
     implementation(platform("androidx.compose:compose-bom:2025.04.01"))
     implementation("androidx.activity:activity-compose:1.10.1")

@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=scripts/toolchain.env
+source "$root/scripts/toolchain.env"
+[ "$(bun --version)" = "$MADMAIL_BUN_VERSION" ] || { echo "Use Bun $MADMAIL_BUN_VERSION for the embedded admin UI." >&2; exit 1; }
 revision=22db4602768364955670b0f08dd97f03db6e22cc
 source_dir="${MADMAIL_ENGINE_SOURCE:-$root/build/engine-source}"
 patch="$root/native/patches/0001-android-storage-copy-fallback.patch"
@@ -17,13 +20,11 @@ else
     diff -u "$patch" <(git -C "$source_dir" diff) >/dev/null || { echo 'Engine source has unexpected changes.' >&2; exit 1; }
 fi
 git -C "$source_dir" -c submodule.external/madmail-admin-web.url=https://github.com/themadorg/madmail-admin-web.git submodule update --init external/madmail-admin-web
-if [ ! -f "$source_dir/external/madmail-admin-web/build/index.html" ]; then
-    (
-        cd "$source_dir/external/madmail-admin-web"
-        bun install --frozen-lockfile
-        bun run build
-    )
-fi
+(
+    cd "$source_dir/external/madmail-admin-web"
+    bun install --frozen-lockfile
+    bun run build
+)
 iroh_assets="$source_dir/crates/chatmail-iroh/assets"
 iroh_sha=f8ef27631fac213b3ef668d02acd5b3e215292746a3fc71d90c63115446008b1
 if [ ! -f "$iroh_assets/iroh-relay" ] || [ "$(shasum -a 256 "$iroh_assets/iroh-relay" | cut -d ' ' -f 1)" != "$iroh_sha" ]; then
@@ -34,11 +35,11 @@ if [ ! -f "$iroh_assets/iroh-relay" ] || [ "$(shasum -a 256 "$iroh_assets/iroh-r
     rm "$iroh_assets/relay.tar.gz"
 fi
 printf '%s\n' 'v0.35.0' > "$iroh_assets/VERSION"
-rustup target add aarch64-unknown-linux-musl
+rustup toolchain install "$MADMAIL_RUST_VERSION" --profile minimal --target aarch64-unknown-linux-musl
 (
     cd "$source_dir"
     CHATMAIL_ADMIN_WEB_BUILD="$source_dir/external/madmail-admin-web/build" \
-        PATH="$(dirname "$(rustup which cargo)"):$PATH" CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-4}" RUSTFLAGS='-C link-arg=-Wl,-z,max-page-size=16384' \
+        PATH="$(dirname "$(rustup which --toolchain "$MADMAIL_RUST_VERSION" cargo)"):$PATH" RUSTUP_TOOLCHAIN="$MADMAIL_RUST_VERSION" CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-4}" RUSTFLAGS='-C link-arg=-Wl,-z,max-page-size=16384' \
         uv tool run --from cargo-zigbuild==0.24.0 cargo-zigbuild build --release --locked --target aarch64-unknown-linux-musl --bin madmail
 )
 mkdir -p "$root/app/src/main/jniLibs/arm64-v8a"
