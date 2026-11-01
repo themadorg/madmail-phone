@@ -47,8 +47,9 @@ internal class LocalEngine private constructor(private val context: Context) {
         check(prefs.edit().putString("selected", version.version).commit()) { "Unable to save the selected version." }
     }
 
-    suspend fun start() = mutex.withLock {
-        if (process != null) return@withLock
+    suspend fun start() = mutex.withLock { startLocked() }
+    private suspend fun startLocked() {
+        if (process != null) return
         val version = selected ?: error("This device has no compatible packaged engine.")
         mutable.value = EngineState(EnginePhase.Starting, version.version)
         try {
@@ -142,6 +143,20 @@ internal class LocalEngine private constructor(private val context: Context) {
     private fun readOverview(): JSONObject {
         val token = File(dataDir, "admin_token").readText().trim()
         return AdminApi.overview("http://127.0.0.1:18080/api/admin", token)
+    }
+    suspend fun adminRequest(resource: String, method: String = "GET", body: JSONObject = JSONObject()): JSONObject = mutex.withLock {
+        check(mutable.value.phase == EnginePhase.Running) { "Start hosting to manage settings." }
+        AdminApi.request("http://127.0.0.1:18080/api/admin", File(dataDir, "admin_token").readText().trim(), resource, method, body)
+    }
+    suspend fun restart() = mutex.withLock {
+        check(mutable.value.phase == EnginePhase.Running) { "Start hosting first." }
+        mutable.value = mutable.value.copy(phase = EnginePhase.Stopping)
+        monitor?.cancel(); monitor = null
+        if (!terminate()) {
+            mutable.value = mutable.value.copy(phase = EnginePhase.Failed, error = "The server did not stop cleanly. Start it again from Overview.")
+            error("Server restart stopped after an unclean shutdown.")
+        }
+        startLocked()
     }
     suspend fun invitationRequest(method: String, body: JSONObject = JSONObject()): JSONObject = mutex.withLock {
         check(mutable.value.phase == EnginePhase.Running) { "Start hosting to manage invitations." }
