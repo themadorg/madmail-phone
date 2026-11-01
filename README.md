@@ -12,6 +12,8 @@ Android updates download a signed Madmail Mobile APK over HTTPS, check its packa
 
 Remote SSH management supports explicit host-key trust, password authentication held only for the connection, verified upstream release downloads, app-owned systemd installs, start/stop, authenticated overview through an SSH tunnel, retained-version inventory/removal, and cold backups before upgrades. It requires Linux ARM64/x86-64 and root or passwordless sudo. It refuses to adopt existing Madmail/maddy installations automatically. SSH key authentication, automatic update feeds, backup restoration UI, root port forwarding, and full admin settings editing are not implemented.
 
+Invite now creates real server-scoped invitation links with labels, use limits, expiry, usage and revocation, or a personal Delta Chat account QR with explicit connection settings. Copy, text/image sharing, an enlarged scanning view, and editable guest-facing addresses are available. See [invitation behavior and validation](docs/invitation-flow.md).
+
 Phone ports: SMTP TLS **11465**, IMAP TLS **11993**, HTTPS **18443**. The internal admin HTTP listener is loopback-only on **18080**. Initial certificates are self-signed for `madmail.local`; automatic Delta Chat discovery/trust and real LAN client messaging still need validation. Never describe a running process as proof that guest onboarding works.
 
 See [the product and architecture brainstorm](docs/architecture.md) for scope, root design, compatibility gates, and implementation milestones.

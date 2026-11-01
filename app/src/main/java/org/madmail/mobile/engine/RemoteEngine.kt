@@ -86,6 +86,18 @@ internal class RemoteEngine private constructor(private val context: Context, va
         }.getOrNull() else null
         mutable.value = mutable.value.copy(connected = true, status = when(status) { "running" -> if (overview == null) "Running · health unavailable" else "Running"; "stopped" -> "Stopped"; else -> "Not installed" }, version = lines.getOrNull(1)?.takeIf { Regex("[0-9]+\\.[0-9]+\\.[0-9]+").matches(it) }, installedVersions = if (status == "absent") emptyList() else managed("versions").trim().lines().filter { Regex("[0-9]+\\.[0-9]+\\.[0-9]+").matches(it) }, overview = overview)
     }
+    suspend fun invitationRequest(method: String, body: JSONObject = JSONObject()): JSONObject = mutex.withLock {
+        check(mutable.value.connected && mutable.value.status.startsWith("Running")) { "Connect and start this server first." }
+        val token = managed("token").trim()
+        check(token.matches(Regex("[a-fA-F0-9]{64}")))
+        if (tunnel == null) tunnel = requireSession().setPortForwardingL("127.0.0.1", 0, "127.0.0.1", 18080)
+        AdminApi.request("http://127.0.0.1:$tunnel/api/admin", token, "/admin/registration-token", method, body)
+    }
+    suspend fun createGuest(token: String): JSONObject = mutex.withLock {
+        check(mutable.value.connected && mutable.value.status.startsWith("Running")) { "Connect and start this server first." }
+        if (tunnel == null) tunnel = requireSession().setPortForwardingL("127.0.0.1", 0, "127.0.0.1", 18080)
+        AdminApi.newAccount("http://127.0.0.1:$tunnel/new", token)
+    }
     suspend fun removeVersion(version: String) = operation {
         require(Regex("[0-9]+\\.[0-9]+\\.[0-9]+").matches(version))
         check(version != mutable.value.version)

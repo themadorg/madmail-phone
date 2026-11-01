@@ -69,16 +69,16 @@ internal fun MadmailApp() {
                 .padding(horizontal = 24.dp).padding(top = 28.dp, bottom = 140.dp),
                 verticalArrangement = Arrangement.spacedBy(24.dp)) {
                 if (page != 0) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(listOf("Overview", "Invite", "Settings")[page], style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.SemiBold)
-
+                    Text(listOf("Overview", "Invite", "Settings")[page], modifier = Modifier.weight(1f), style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.SemiBold)
+                    if (page == 1) Text(serverName, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, color = colors.onSurfaceVariant, textAlign = androidx.compose.ui.text.style.TextAlign.End)
                 }
-                if (page != 0) Text(serverName, style = MaterialTheme.typography.titleMedium, color = colors.onSurfaceVariant)
+                if (page == 2) Text(serverName, style = MaterialTheme.typography.titleMedium, color = colors.onSurfaceVariant)
                 key(serverId) {
 
                 when (page) {
 
                     0 -> OverviewScreen(serverName, identity, remote, onSettings = { openHostingPreferences = remote == null; page = 2 })
-                    1 -> RegistrationScreen(serverName, workspace.invitation(serverId)) { workspace.updateInvitation(serverId, it) }
+                    1 -> RegistrationScreen(serverId, serverName, remote, workspace.invitation(serverId)) { workspace.updateInvitation(serverId, it) }
                     else -> ServerSettingsScreen(serverId, serverName, remote, initiallyShowHosting = openHostingPreferences) {
                         remote?.let { saved -> scope.launch(Dispatchers.IO) { org.madmail.mobile.engine.RemoteEngine.get(context, saved).disconnect() } }
                         workspace.forget(serverId)

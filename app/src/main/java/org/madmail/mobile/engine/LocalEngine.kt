@@ -143,6 +143,14 @@ internal class LocalEngine private constructor(private val context: Context) {
         val token = File(dataDir, "admin_token").readText().trim()
         return AdminApi.overview("http://127.0.0.1:18080/api/admin", token)
     }
+    suspend fun invitationRequest(method: String, body: JSONObject = JSONObject()): JSONObject = mutex.withLock {
+        check(mutable.value.phase == EnginePhase.Running) { "Start hosting to manage invitations." }
+        AdminApi.request("http://127.0.0.1:18080/api/admin", File(dataDir, "admin_token").readText().trim(), "/admin/registration-token", method, body)
+    }
+    suspend fun createGuest(token: String): JSONObject = mutex.withLock {
+        check(mutable.value.phase == EnginePhase.Running) { "Start hosting to create an account." }
+        AdminApi.newAccount("http://127.0.0.1:18080/new", token)
+    }
     companion object {
         @Volatile private var instance: LocalEngine? = null
         fun get(context: Context): LocalEngine = instance ?: synchronized(this) {
@@ -163,20 +171,32 @@ internal fun compareVersions(a: String, b: String): Int {
     return 0
 }
 internal object AdminApi {
-    fun overview(endpoint: String, token: String): JSONObject {
+    fun overview(endpoint: String, token: String): JSONObject = request(endpoint, token, "/admin/overview", "GET")
+    fun request(endpoint: String, token: String, resource: String, method: String, body: JSONObject = JSONObject()): JSONObject {
         val connection = URL(endpoint).openConnection() as HttpURLConnection
         try {
             connection.requestMethod = "POST"; connection.connectTimeout = 1500; connection.readTimeout = 3000
             connection.instanceFollowRedirects = false; connection.doOutput = true
             connection.setRequestProperty("Content-Type", "application/json")
-            val payload = JSONObject().put("method", "GET").put("resource", "/admin/overview")
+            val payload = JSONObject().put("method", method).put("resource", resource).put("body", body)
                 .put("headers", JSONObject().put("Authorization", "Bearer $token"))
             connection.outputStream.use { it.write(payload.toString().toByteArray()) }
             check(connection.responseCode == 200) { "Admin endpoint unavailable." }
             val bytes = connection.inputStream.use { it.readBytesLimited(2 * 1024 * 1024) }
             val envelope = JSONObject(String(bytes))
-            check(envelope.getInt("status") == 200) { "Admin request rejected." }
-            return envelope.getJSONObject("body")
+            check(envelope.getInt("status") in 200..299) { "Server rejected the request (${envelope.getInt("status")})." }
+            return envelope.optJSONObject("body") ?: JSONObject()
+        } finally { connection.disconnect() }
+    }
+    fun newAccount(endpoint: String, token: String): JSONObject {
+        val connection = URL(endpoint).openConnection() as HttpURLConnection
+        try {
+            connection.requestMethod = "POST"; connection.connectTimeout = 3000; connection.readTimeout = 10000
+            connection.instanceFollowRedirects = false; connection.doOutput = true
+            connection.setRequestProperty("Content-Type", "application/json")
+            connection.outputStream.use { it.write(JSONObject().put("token", token).toString().toByteArray()) }
+            check(connection.responseCode == 200) { "Account creation was not confirmed. Refresh invitations before trying again." }
+            return JSONObject(String(connection.inputStream.use { it.readBytesLimited(64 * 1024) }))
         } finally { connection.disconnect() }
     }
 }
