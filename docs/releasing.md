@@ -42,6 +42,8 @@ uv run python scripts/verify-apk.py app/build/outputs/apk/release/app-release-un
 
 For a locally signed build, supply `MADMAIL_KEYSTORE`, `MADMAIL_STORE_PASSWORD`, `MADMAIL_KEY_ALIAS`, `MADMAIL_KEY_PASSWORD` securely through the environment, then run `./gradlew --no-daemon -PrequireReleaseSigning=true :app:assembleRelease`. Do not put secrets in command-line properties or the repository. `EXPECTED_SIGNER_SHA256=... uv run python scripts/verify-apk.py app/build/outputs/apk/release/app-release.apk --signed` verifies the output.
 
+For the shareable compressed artifact, build unsigned first, then supply those signing variables plus `EXPECTED_SIGNER_SHA256` and run `./scripts/sign-release.sh`. This is also the GitHub release path: it recompresses deflated entries at level 9, verifies every extracted file is byte-identical, preserves stored entries, runs 16 KiB-aware zipalign, signs, and validates the final APK. Compression must precede signing. No engine/service feature is removed. `./scripts/package-release.sh` then collects the APK and corresponding source/provenance.
+
 ## Native provenance and source
 
 The engine is compiled from a pinned upstream commit, locked Cargo dependencies, the checked-in Android patch, a pinned admin submodule, and a checksum-verified Iroh relay. Fresh native builds regenerate `assets/engine/releases.json` because different hosts/toolchains may produce different bytes. The packaged manifest describes the actual binary, and the APK validator checks it. This is source-pinned provenance, not a claim of bit-reproducible cross-host builds. Review generated manifest changes; never silently commit them as unrelated code changes.

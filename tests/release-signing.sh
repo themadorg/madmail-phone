@@ -11,8 +11,10 @@ FIXTURE_PASSWORD=$(uv run python -c 'import secrets; print(secrets.token_hex(24)
 keytool -genkeypair -keystore "$stage/fixture.jks" -alias fixture -keyalg RSA -keysize 2048 -validity 1 \
     -dname 'CN=Disposable Madmail CI Fixture' -storepass:env FIXTURE_PASSWORD -keypass:env FIXTURE_PASSWORD >/dev/null 2>&1
 signer="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+uv run python scripts/compress-apk.py app/build/outputs/apk/release/app-release-unsigned.apk "$stage/compressed.apk"
+"$ANDROID_HOME/build-tools/35.0.0/zipalign" -P 16 -f 4 "$stage/compressed.apk" "$stage/aligned.apk"
 "$signer" sign --ks "$stage/fixture.jks" --ks-pass env:FIXTURE_PASSWORD --key-pass env:FIXTURE_PASSWORD \
-    --out "$stage/fixture.apk" app/build/outputs/apk/release/app-release-unsigned.apk
+    --out "$stage/fixture.apk" "$stage/aligned.apk"
 export EXPECTED_SIGNER_SHA256
 EXPECTED_SIGNER_SHA256=$("$signer" verify --print-certs "$stage/fixture.apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
 uv run python scripts/verify-apk.py "$stage/fixture.apk" --signed

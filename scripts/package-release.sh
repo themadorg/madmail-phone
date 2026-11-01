@@ -23,7 +23,52 @@ cp app/src/main/assets/engine/releases.json dist/engine-build.json
 printf 'mobile=%s\nengine=%s\nadmin_web=%s\n' "$(git rev-parse HEAD)" "$(git -C "$source_dir" rev-parse HEAD)" "$(git -C "$source_dir/external/madmail-admin-web" rev-parse HEAD)" > dist/source-revisions.txt
 cp scripts/toolchain.env dist/toolchain.env
 tar -czf "dist/madmail-mobile-$version-source.tar.gz" -C "$stage" mobile engine
+cat > dist/INSTALL.txt <<EOF
+Madmail Mobile $version — ARM64 Android release candidate
+
+Install madmail-mobile-$version-arm64.apk on Android 8 or later.
+Allow installation from your file manager when Android asks.
+The complete Madmail engine is bundled; no separate engine download is needed.
+Hosting uses Wi-Fi/hotspot or a reachable VPN network. Internet access is needed
+for remote SSH/API management and update discovery, not for extracting the engine.
+
+This release is signed with the certificate SHA-256:
+$EXPECTED_SIGNER_SHA256
+
+An existing development/debug-signed installation cannot be updated with this
+release key. Do not uninstall a phone holding mail data just to install this APK;
+uninstalling deletes its private server data. Test on a clean device instead.
+Future updates must retain the same release signing identity.
+
+This is an alpha release. Root ports, guided backup restoration and complete
+web-admin parity are not available. See mobile/docs/feature-status.md in the
+source archive for tested capabilities and remaining work.
+
+SHA256SUMS verifies the APK, source and provenance files. The source archive
+contains the mobile app, pinned engine/admin sources and Android storage patch.
+No signing keys, passwords or live server account data are included.
+EOF
 (
     cd dist
-    shasum -a 256 ./*.apk ./*.tar.gz engine-build.json source-revisions.txt toolchain.env > SHA256SUMS
+    shasum -a 256 "madmail-mobile-$version-arm64.apk" "madmail-mobile-$version-source.tar.gz" engine-build.json source-revisions.txt toolchain.env INSTALL.txt > SHA256SUMS
 )
+uv run python - "$version" <<'PY'
+import hashlib
+import sys
+import zipfile
+from pathlib import Path
+
+version = sys.argv[1]
+root = Path("dist")
+bundle = root / f"madmail-mobile-{version}-arm64-full.zip"
+names = [f"madmail-mobile-{version}-arm64.apk", f"madmail-mobile-{version}-source.tar.gz",
+         "engine-build.json", "source-revisions.txt", "toolchain.env", "INSTALL.txt", "SHA256SUMS"]
+with zipfile.ZipFile(bundle, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
+    for name in names:
+        archive.write(root / name, name)
+with zipfile.ZipFile(bundle) as archive:
+    assert archive.testzip() is None
+digest = hashlib.sha256(bundle.read_bytes()).hexdigest()
+bundle.with_suffix(".zip.sha256").write_text(f"{digest}  {bundle.name}\n")
+print(f"Shareable bundle: {bundle} ({bundle.stat().st_size:,} bytes)")
+PY

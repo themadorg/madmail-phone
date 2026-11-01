@@ -41,8 +41,7 @@ jobs:
           umask 077
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$MADMAIL_KEYSTORE"
           unset KEYSTORE_BASE64
-          ./gradlew --no-daemon -PrequireReleaseSigning=true :app:assembleRelease
-          uv run python scripts/verify-apk.py app/build/outputs/apk/release/app-release.apk --signed
+          ./scripts/sign-release.sh
       - name: Package APK and corresponding source
         env:
           EXPECTED_SIGNER_SHA256: ${{ vars.ANDROID_SIGNER_SHA256 }}
