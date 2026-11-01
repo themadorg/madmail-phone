@@ -4,6 +4,17 @@
 
 A Kotlin Android host and management UI for a local Madmail server. Guests use Delta Chat; this app is not a messaging client.
 
+## Screenshots
+
+Real captures from a Pixel 6a. The server picker includes a saved test connection; the Invite screen shows setup without exposing a live account QR.
+
+<p>
+  <img src="assets/screenshots/overview.png" width="220" alt="Overview with running phone server and live activity counters">
+  <img src="assets/screenshots/servers.png" width="220" alt="Server picker with the phone and a saved test SSH connection">
+  <img src="assets/screenshots/invite.png" width="220" alt="Invitation setup and guest-facing address">
+  <img src="assets/screenshots/settings.png" width="220" alt="Per-server settings grouped into management sections">
+</p>
+
 ## Current implementation
 
 See [feature status and remaining work](docs/feature-status.md) for the completion audit. Optional **App lock** in Settings protects management of every saved server with the phone's system authentication while hosting continues.
