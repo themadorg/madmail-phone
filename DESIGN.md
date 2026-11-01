@@ -27,3 +27,7 @@ One continuous scroll, with all data visible. No accordions, large metric cards,
 ## Invite
 
 The selected server owns all invitation state. A compact white QR is the focal point once an invitation exists; copy/share are primary, enlargement and image sharing secondary. Consistent outlined icons, 48dp targets, 16dp internal spacing, and the existing violet action color match Overview. Creation and management use focused native sheets. Distinguish a browser invite for multiple separate accounts from a personal Delta Chat login QR. Show real usage and expiration; never fabricate compatibility or readiness. The guest-facing origin remains editable without exposing SSH/admin credentials.
+
+## Server settings
+
+Telegram-style grouped navigation opens dedicated subpages rather than accordion descriptions or another horizontal tab bar. Keep the existing floating main dock. The subpage header names the section and server, with native Android back behavior and a refresh action. Group rows on a 16dp-radius low surface; 24dp outlined section icons, 14dp icon/content spacing, 72dp navigation rows, and 48dp minimum action targets. Use the existing light/dark violet tokens and platform typography. Editable rows show current values and a pencil; public technical values have a separate copy action; secrets stay masked and are never prefilled into editors. Native switches show only known states. Save feedback distinguishes confirmed writes from failed refresh, and restart-required state is explicit. No decorative page animations.

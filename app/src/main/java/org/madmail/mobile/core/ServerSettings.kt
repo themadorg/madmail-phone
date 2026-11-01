@@ -7,13 +7,25 @@ internal data class ServerSetting(
     val hint: String = "", val route: String = "/admin/settings/$key",
     val choices: List<String> = emptyList(), val restart: Boolean = false,
 ) {
+    fun display(value: String, locale: java.util.Locale = java.util.Locale.getDefault()): String {
+        val match = Regex("([0-9]+)([BKMGbdhms])").matchEntire(value)
+        if (kind == SettingKind.Size && match != null) {
+            val unit = mapOf("B" to "B", "b" to "B", "K" to "KiB", "M" to "MiB", "G" to "GiB")[match.groupValues[2]]
+            if (unit != null) return "${java.text.NumberFormat.getIntegerInstance(locale).format(match.groupValues[1].toBigInteger())} $unit"
+        }
+        if (kind == SettingKind.Duration && match != null) {
+            val unit = mapOf("d" to "day", "h" to "hour", "m" to "minute", "s" to "second")[match.groupValues[2]]
+            if (unit != null) return "${java.text.NumberFormat.getIntegerInstance(locale).format(match.groupValues[1].toBigInteger())} $unit${if (match.groupValues[1] == "1") "" else "s"}"
+        }
+        return value
+    }
     fun valid(value: String, phone: Boolean): Boolean {
         if (value.isBlank() || value.length > 4096 || value.any { it == '\n' || it == '\r' || it == '\u0000' }) return false
         return when (kind) {
             SettingKind.Port -> (value.toIntOrNull() ?: 0) in (if (phone) 1024 else 1)..65535
             SettingKind.PositiveNumber -> (value.toLongOrNull() ?: 0) > 0
             SettingKind.Duration -> Regex("(?:[0-9]+(?:\\.[0-9]+)?(?:d|h|ms|m|s))+").matches(value)
-            SettingKind.Size -> Regex("[0-9]+(?:\\.[0-9]+)?\\s*(?:B|K|M|G|KB|MB|GB|KiB|MiB|GiB)?", RegexOption.IGNORE_CASE).matches(value)
+            SettingKind.Size -> value == "0" || Regex("[0-9]+[BKMGb](?: +[0-9]+[BKMGb])*").matches(value)
             SettingKind.Choice -> value in choices
             else -> true
         }

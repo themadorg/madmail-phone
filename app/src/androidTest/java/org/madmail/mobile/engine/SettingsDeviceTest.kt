@@ -53,6 +53,10 @@ class SettingsDeviceTest {
             val saved = withTimeout(10000) { controller.state.first { !it.busy && it.values?.optJSONObject("language")?.optString("value") == next } }
             assertNull(saved.error)
             assertEquals(next, engine.adminRequest("/admin/settings/language").getString("value"))
+            controller.mutate("/admin/settings/language", "POST", JSONObject().put("action", "set").put("value", "invalid value"))
+            val rejected = withTimeout(10000) { controller.state.first { !it.busy && it.error?.startsWith("The server rejected") == true } }
+            assertFalse(rejected.stale)
+            assertEquals(next, engine.adminRequest("/admin/settings/language").getString("value"))
             controller.restart()
             withTimeout(20000) { controller.state.first { !it.busy && it.message == "Server restarted." } }
             assertEquals(EnginePhase.Running, engine.state.value.phase)

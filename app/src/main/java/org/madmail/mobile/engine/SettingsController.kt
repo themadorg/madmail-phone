@@ -72,8 +72,10 @@ internal class SettingsController private constructor(private val context: Conte
                 val values = request("/admin/settings")
                 mutable.value = mutable.value.copy(values = values, stale = false)
                 if (refreshAccounts) mutable.value = mutable.value.copy(accounts = request("/admin/accounts"), quota = request("/admin/quota"))
-            } catch (_: Exception) {
-                mutable.value = mutable.value.copy(stale = true, error = if (written) "Saved, but refreshed values are unavailable. Refresh before making another change." else "The change wasn’t confirmed and may have been applied. Refresh before trying again.")
+            } catch (e: Exception) {
+                if (!written && e is AdminRequestRejected && e.status in listOf(400, 401, 403, 404, 405, 422)) {
+                    mutable.value = mutable.value.copy(error = if (e.status == 400 || e.status == 422) "The server rejected this value. Check its format and try again." else "This operation is not available on the connected server (${e.status}).")
+                } else mutable.value = mutable.value.copy(stale = true, error = if (written) "Saved, but refreshed values are unavailable. Refresh before making another change." else "The change wasn’t confirmed and may have been applied. Refresh before trying again.")
             } finally { mutable.value = mutable.value.copy(busy = false) }
         } }
     }

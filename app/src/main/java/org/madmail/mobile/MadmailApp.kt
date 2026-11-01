@@ -68,18 +68,17 @@ internal fun MadmailApp() {
             Column(Modifier.fillMaxSize().statusBarsPadding().hazeSource(haze).verticalScroll(pageScroll)
                 .padding(horizontal = 24.dp).padding(top = 28.dp, bottom = 140.dp),
                 verticalArrangement = Arrangement.spacedBy(24.dp)) {
-                if (page != 0) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                if (page == 1) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                     Text(listOf("Overview", "Invite", "Settings")[page], modifier = Modifier.weight(1f), style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.SemiBold)
                     if (page == 1) Text(serverName, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, color = colors.onSurfaceVariant, textAlign = androidx.compose.ui.text.style.TextAlign.End)
                 }
-                if (page == 2) Text(serverName, style = MaterialTheme.typography.titleMedium, color = colors.onSurfaceVariant)
                 key(serverId) {
 
                 when (page) {
 
                     0 -> OverviewScreen(serverName, identity, remote, onSettings = { openHostingPreferences = remote == null; page = 2 })
                     1 -> RegistrationScreen(serverId, serverName, remote, workspace.invitation(serverId)) { workspace.updateInvitation(serverId, it) }
-                    else -> ServerSettingsScreen(serverId, serverName, remote, initiallyShowHosting = openHostingPreferences) {
+                    else -> ServerSettingsScreen(serverId, serverName, remote, initiallyShowHosting = openHostingPreferences, onNavigate = { scope.launch { pageScroll.scrollTo(0) } }) {
                         remote?.let { saved -> scope.launch(Dispatchers.IO) { org.madmail.mobile.engine.RemoteEngine.get(context, saved).disconnect() } }
                         workspace.forget(serverId)
                         profiles.remove(serverId)

@@ -185,6 +185,8 @@ internal fun compareVersions(a: String, b: String): Int {
     for (i in 0 until maxOf(left.size, right.size)) { val comparison = (left.getOrElse(i) { 0 }).compareTo(right.getOrElse(i) { 0 }); if (comparison != 0) return comparison }
     return 0
 }
+internal class AdminRequestRejected(val status: Int) : IllegalStateException("Server rejected the request ($status).")
+
 internal object AdminApi {
     fun overview(endpoint: String, token: String): JSONObject = request(endpoint, token, "/admin/overview", "GET")
     fun request(endpoint: String, token: String, resource: String, method: String, body: JSONObject = JSONObject()): JSONObject {
@@ -199,7 +201,8 @@ internal object AdminApi {
             check(connection.responseCode == 200) { "Admin endpoint unavailable." }
             val bytes = connection.inputStream.use { it.readBytesLimited(2 * 1024 * 1024) }
             val envelope = JSONObject(String(bytes))
-            check(envelope.getInt("status") in 200..299) { "Server rejected the request (${envelope.getInt("status")})." }
+            val status = envelope.getInt("status")
+            if (status !in 200..299) throw AdminRequestRejected(status)
             return envelope.optJSONObject("body") ?: JSONObject()
         } finally { connection.disconnect() }
     }

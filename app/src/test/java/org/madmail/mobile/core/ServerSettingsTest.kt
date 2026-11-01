@@ -16,6 +16,9 @@ class ServerSettingsTest {
         assertFalse(duration.valid("forever", true)); assertFalse(duration.valid("-1d", true))
         val size = serverSettings.single { it.key == "max_message_size" }
         assertTrue(size.valid("25M", true)); assertFalse(size.valid("lots", true))
+        assertFalse(size.valid("25MB", true)); assertFalse(size.valid("1.5M", true))
+        assertEquals("1,000 MiB", size.display("1000M", java.util.Locale.US))
+        assertEquals("30 days", duration.display("30d", java.util.Locale.US))
     }
     @Test fun stableManagementEndpointsCannotBeEdited() {
         for (key in listOf("http_port", "https_port", "imap_tls_port", "submission_tls_port", "admin_path")) {
