@@ -1,4 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="14" fill="#e11d48"/>
-  <text x="32" y="32" dy="0.35em" text-anchor="middle" font-family="ui-sans-serif, system-ui, -apple-system, sans-serif" font-size="26" font-weight="600" fill="#ffffff">MM</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" role="img" aria-label="Madmail">
+  <rect width="108" height="108" rx="24" fill="#6534D5"/>
+  <g fill="#fff">
+    <path d="M24 35Q24 27 32 29L51 42Q54 44 57 42L76 29Q84 27 84 35V38Q84 39 82 40L58 57Q54 60 50 57L26 40Q24 39 24 38Z"/>
+    <path d="M24 44Q24 43 25 44L50 66Q54 70 58 66L83 44Q84 43 84 44V72Q84 80 76 80H32Q24 80 24 72Z"/>
+  </g>
 </svg>
