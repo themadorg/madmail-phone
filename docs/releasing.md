@@ -11,6 +11,10 @@ Actions are pinned by commit; Dependabot proposes updates. Runs have timeouts, c
 
 ## One-time signing setup
 
+Run `./scripts/create-release-key.sh` in your terminal. It prompts twice without echoing the password, refuses to overwrite an existing key, and saves the key and private GitHub import files under `~/.local/share/madmail-release/` with restricted permissions. The alias is `madmail`; the store and key use the same password. Back up that directory securely and retain the password separately. Do not include it in release uploads.
+
+Later, create the `release` environment in your GitHub repository and configure its trusted refs. Run `./scripts/github-signing-secrets.sh OWNER/REPOSITORY` while authenticated with `gh` to that repository. It validates your existing key password, transfers the four secrets and certificate fingerprint to that environment, and does not regenerate the key or persist the password. Reusing the same key preserves update compatibility.
+
 Create or reuse a permanent Android release signing key, keep an offline backup, and put these secrets in GitHub's **release** environment:
 
 | Secret | Value |
