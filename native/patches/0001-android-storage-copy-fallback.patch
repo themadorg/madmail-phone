@@ -1,0 +1,94 @@
+diff --git a/crates/chatmail-delivery/src/queue/store.rs b/crates/chatmail-delivery/src/queue/store.rs
+index aa6f9cf..56f9f7f 100644
+--- a/crates/chatmail-delivery/src/queue/store.rs
++++ b/crates/chatmail-delivery/src/queue/store.rs
+@@ -156,7 +156,17 @@ impl QueueStore {
+ 
+         // 2. Hard-link that single body into every other recipient's entry.
+         for id in &ids[1..] {
+-            fs::hard_link(&canonical, self.body_path(id)).await?;
++            let destination = self.body_path(id);
++            match fs::hard_link(&canonical, &destination).await {
++                Ok(()) => {},
++                Err(e) if matches!(e.kind(), std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::Unsupported)
++                    || e.raw_os_error() == Some(18) => {
++                    fs::copy(&canonical, &destination).await?;
++                    // The original body was synced; the new copy must be durable too.
++                    fs::File::open(&destination).await?.sync_all().await?;
++                },
++                Err(e) => return Err(e.into()),
++            }
+         }
+ 
+         #[cfg(test)]
+diff --git a/crates/chatmail-storage/src/blob.rs b/crates/chatmail-storage/src/blob.rs
+index bdaa3e7..278c1f0 100644
+--- a/crates/chatmail-storage/src/blob.rs
++++ b/crates/chatmail-storage/src/blob.rs
+@@ -147,8 +147,10 @@ pub(crate) async fn link_into_inbox(
+ 
+             Ok(dest)
+         }
+-        Err(e) if is_cross_device_link(&e) => {
++        Err(e) if should_copy_after_link_error(&e) => {
+             tokio::fs::copy(canonical, &dest).await?;
++            let mut copied = tokio::fs::File::open(&dest).await?;
++            store.fsync().sync_file_data(&mut copied).await?;
+             store.fsync().commit_directory(&new_dir).await?;
+             store.invalidate_mailbox_listing(user, "INBOX");
+             // Match the hard_link success path: eager uidlist registration so IMAP does not
+@@ -180,14 +182,14 @@ pub(crate) async fn link_into_inbox(
+ }
+ 
+ #[cfg(unix)]
+-fn is_cross_device_link(e: &std::io::Error) -> bool {
+-    e.raw_os_error() == Some(18)
++fn should_copy_after_link_error(e: &std::io::Error) -> bool {
++    // Android app sandboxes reject hard links even within private app storage.
++    matches!(e.raw_os_error(), Some(1 | 13 | 18 | 95))
+ }
+ 
+ #[cfg(not(unix))]
+-fn is_cross_device_link(e: &std::io::Error) -> bool {
+-    let _ = e;
+-    false
++fn should_copy_after_link_error(e: &std::io::Error) -> bool {
++    matches!(e.kind(), std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::Unsupported)
+ }
+ 
+ pub async fn write_blob(
+diff --git a/crates/chatmail-storage/src/cas.rs b/crates/chatmail-storage/src/cas.rs
+index 6a67ea4..1ad0800 100644
+--- a/crates/chatmail-storage/src/cas.rs
++++ b/crates/chatmail-storage/src/cas.rs
+@@ -121,8 +121,9 @@ impl ContentStore {
+         }
+         match tokio::fs::hard_link(canonical, dest).await {
+             Ok(()) => Ok(()),
+-            Err(e) if is_cross_device_link(&e) => {
++            Err(e) if should_copy_after_link_error(&e) => {
+                 tokio::fs::copy(canonical, dest).await?;
++                tokio::fs::File::open(dest).await?.sync_data().await?;
+                 Ok(())
+             }
+             Err(e) => Err(ChatmailError::from(e)),
+@@ -232,14 +233,14 @@ where
+ }
+ 
+ #[cfg(unix)]
+-fn is_cross_device_link(e: &std::io::Error) -> bool {
+-    e.raw_os_error() == Some(18)
++fn should_copy_after_link_error(e: &std::io::Error) -> bool {
++    // Android app sandboxes reject hard links even within private app storage.
++    matches!(e.raw_os_error(), Some(1 | 13 | 18 | 95))
+ }
+ 
+ #[cfg(not(unix))]
+-fn is_cross_device_link(e: &std::io::Error) -> bool {
+-    let _ = e;
+-    false
++fn should_copy_after_link_error(e: &std::io::Error) -> bool {
++    matches!(e.kind(), std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::Unsupported)
+ }
+ 
+ #[cfg(test)]

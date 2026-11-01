@@ -5,6 +5,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
@@ -17,6 +20,35 @@ import javax.net.ssl.SSLSocket
 import javax.net.ssl.TrustManagerFactory
 
 class InvitationDeviceTest {
+    @Test fun accountQrSurvivesConcurrentClientLogins() = runBlocking(Dispatchers.IO) {
+        val engine = LocalEngine.get(InstrumentationRegistry.getInstrumentation().targetContext)
+        try {
+            engine.start()
+            repeat(4) {
+                val token = engine.invitationRequest("POST", JSONObject().put("max_uses", 1).put("expires_in", "1h").put("comment", "Concurrent account QR test")).getString("token")
+                var email: String? = null
+                try {
+                    val guest = engine.createGuest(token)
+                    email = guest.getString("email")
+                    // Publication now means the one-use reservation has been settled, not pending.
+                    val entries = engine.invitationRequest("GET").getJSONArray("tokens")
+                    val item = (0 until entries.length()).map { entries.getJSONObject(it) }.single { it.getString("token") == token }
+                    assertEquals(1, item.getInt("used_count"))
+                    assertEquals(0, item.getInt("pending_reservations"))
+                    coroutineScope {
+                        (1..4).map { async(Dispatchers.IO) {
+                            LocalAccountReadiness.verify(guest, File(engine.dataDir, "certs/fullchain.pem"))
+                        } }.awaitAll()
+                    }
+                    val accounts = engine.adminRequest("/admin/accounts").getJSONArray("accounts")
+                    assertTrue((0 until accounts.length()).any { accounts.getJSONObject(it).optString("username") == email })
+                } finally {
+                    email?.let { engine.adminRequest("/admin/accounts", "DELETE", JSONObject().put("username", it)) }
+                    engine.invitationRequest("DELETE", JSONObject().put("token", token))
+                }
+            }
+        } finally { engine.stop() }
+    }
     @Test fun remoteInvitationsThroughSsh() = runBlocking(Dispatchers.IO) {
         org.junit.Assume.assumeTrue(InstrumentationRegistry.getArguments().getString("remoteFixture") == "true")
         val context = InstrumentationRegistry.getInstrumentation().targetContext

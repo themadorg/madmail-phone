@@ -164,7 +164,9 @@ internal class LocalEngine private constructor(private val context: Context) {
     }
     suspend fun createGuest(token: String): JSONObject = mutex.withLock {
         check(mutable.value.phase == EnginePhase.Running) { "Start hosting to create an account." }
-        AdminApi.newAccount("http://127.0.0.1:18080/new", token)
+        AdminApi.newAccount("http://127.0.0.1:18080/new", token).also {
+            LocalAccountReadiness.verify(it, File(dataDir, "certs/fullchain.pem"))
+        }
     }
     suspend fun browserInviteHost(origin: String): String? = mutex.withLock {
         check(mutable.value.phase == EnginePhase.Running)

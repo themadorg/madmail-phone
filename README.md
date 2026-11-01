@@ -16,13 +16,13 @@ Settings uses grouped subpages with live API controls, account quotas, masked se
 
 Invite now creates real server-scoped invitation links with labels, use limits, expiry, usage and revocation, or a personal Delta Chat account QR with explicit connection settings. Copy, text/image sharing, an enlarged scanning view, and editable guest-facing addresses are available. The guest-address picker separates Wi-Fi/hotspot/VPN interfaces, reads remote addresses over SSH, and checks listener ports. Account QR is the default; browser links are refused when the server still advertises its placeholder mail hostname. See [invitation behavior and validation](docs/invitation-flow.md).
 
-Phone ports: SMTP TLS **11465**, IMAP TLS **11993**, HTTPS **18443**. The internal admin HTTP listener is loopback-only on **18080**. Initial certificates are self-signed for `madmail.local`; automatic Delta Chat discovery/trust and real LAN client messaging still need validation. Never describe a running process as proof that guest onboarding works.
+Phone ports: SMTP TLS **11465**, IMAP TLS **11993**, HTTPS **18443**. The internal admin HTTP listener is loopback-only on **18080**. Initial certificates are self-signed for `madmail.local`. Explicit account-QR login, SecureJoin and encrypted text/reply delivery are verified between two separate Delta Chat profiles on the Pixel; another physical LAN guest, offline networking and Tailscale still need validation. See [device verification](docs/invitation-flow.md).
 
 See [the product and architecture brainstorm](docs/architecture.md) for scope, root design, compatibility gates, and implementation milestones.
 
 ## Build
 
-Requires JDK 17, Android SDK 35, NDK 28.2.13676358, and network access for initial dependencies. This build supports ARM64 Android devices. Set `ANDROID_HOME` or local `sdk.dir` in `local.properties`.
+Requires JDK 17, Android SDK 35, NDK 28.2.13676358, Rust/rustup, uv, bun, and network access for initial dependencies. This build supports ARM64 Android devices. Set `ANDROID_HOME` or local `sdk.dir` in `local.properties`.
 
 ```sh
 export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.2.13676358"
@@ -33,6 +33,6 @@ export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.2.13676358"
 APK: `app/build/outputs/apk/debug/app-debug.apk`. Minimum Android 8.0/API 26. This development bootstrap targets API 35; reassess target SDK and local-network permissions before distribution. No signing keys or server secrets belong in this repository.
 
 
-Release APKs must use a stable signing key and increasing `-PappVersionCode=N -PappVersionName=X`. Never distribute the development signing key. The pinned engine binary is fetched by `scripts/prepare-engine.sh`, not committed. Its license is included in app assets and its exact source is [Madmail v2.30.5](https://github.com/themadorg/madmail/tree/v2.30.5).
+Release APKs must use a stable signing key and increasing `-PappVersionCode=N -PappVersionName=X`. Never distribute the development signing key. `scripts/prepare-engine.sh` builds a missing engine from pinned upstream source with the checked-in Android storage patch; it requires Rust/rustup and uv in addition to the NDK. `scripts/build-engine.sh` uses locked Cargo dependencies and cargo-zigbuild 0.24.0, records binary/patch hashes in the packaged manifest, and does not commit the binary. Review the manifest change after rebuilding. The upstream license is included in app assets. Source revision and patch are documented in [engine lifecycle](docs/engine-lifecycle.md).
 
 See [engine lifecycle and validation](docs/engine-lifecycle.md) for storage paths, update behavior and the SSH integration fixture.

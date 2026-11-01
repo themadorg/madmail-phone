@@ -1,1 +1,10 @@
-[{"version":"2.30.5","file":"libmadmail_v2_30_5.so","sha256":"70ef60fac0e68f1bcb108da26206f3f9147321b381a953eec4f3db8b88a38d98","source":"https://github.com/themadorg/madmail/tree/v2.30.5"}]
+[
+  {
+    "version": "2.30.5",
+    "file": "libmadmail_v2_30_5.so",
+    "sha256": "7c9b63b481c1ea58671b12c65178622103a1e37565c9f1501095a2ef442f6b5d",
+    "source": "https://github.com/themadorg/madmail/tree/22db4602768364955670b0f08dd97f03db6e22cc",
+    "build": "android-storage-1",
+    "patch_sha256": "c0e9481d936ea12049cebb21a82c4f7672267676ea7c8d20dbdcba01ad41c6f1"
+  }
+]

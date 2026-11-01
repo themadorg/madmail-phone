@@ -1,3 +1,5 @@
+import java.security.MessageDigest
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -29,6 +31,14 @@ tasks.register("verifyPackagedEngine") {
             check(file("src/main/jniLibs/arm64-v8a/$it").isFile) {
                 "Missing packaged engine. Run scripts/prepare-engine.sh with ANDROID_NDK_HOME set."
             }
+        }
+        val releases = groovy.json.JsonSlurper().parse(file("src/main/assets/engine/releases.json")) as List<*>
+        releases.forEach { entry ->
+            val release = entry as Map<*, *>
+            val binary = file("src/main/jniLibs/arm64-v8a/${release["file"]}")
+            val digest = MessageDigest.getInstance("SHA-256").digest(binary.readBytes())
+                .joinToString("") { "%02x".format(it) }
+            check(digest == release["sha256"]) { "Packaged engine checksum mismatch. Run scripts/prepare-engine.sh." }
         }
     }
 }
