@@ -55,7 +55,7 @@ internal fun EngineControls() {
 }
 
 @Composable
-private fun BackgroundHostingAccess() {
+internal fun BackgroundHostingAccess() {
     val context = LocalContext.current
     val power = remember { context.getSystemService(PowerManager::class.java) }
     var allowed by remember { mutableStateOf(power.isIgnoringBatteryOptimizations(context.packageName)) }

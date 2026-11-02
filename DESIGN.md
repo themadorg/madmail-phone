@@ -45,3 +45,9 @@ First launch asks where to host with equally weighted Phone and Remote server ac
 Workspace destinations use a short shared-axis transition; setup and settings subpages fade between states. Compose animation timing follows Android animator duration scaling. Hosting state has a finite animated change, persistent text and a polite accessibility announcement, driven by engine state. It never implies firewall protection.
 
 Phone Overview exposes invitation controls before Activity by default. Generate connection QR creates a random personal account through the existing server operation, only on explicit tap; it never creates accounts on screen entry. QR display, enlargement, sharing, expiry and uncertain-write handling stay server-scoped. Invitation visibility does not change registration permissions.
+
+## First-run onboarding
+
+A short welcome introduces hosting and QR invitations, with a direct remote-server shortcut for existing hosts. Host choice remains explicit with no preselection. Phone configuration collects a display name and explains network reachability and optional Android background access. A review screen names the host and explains the Start hosting → generate QR sequence before saving. No engine, account or server mutation runs simply from viewing onboarding.
+
+Use the existing violet Material theme, outlined icons, readable flat detail rows and a bottom primary action above the keyboard. Content scrolls independently, setup steps fade, drafts survive back navigation, and native Back follows the steps. Existing configured installations skip welcome; adding another host goes straight to host choice. Remote SSH/API review and identity verification remain in the existing connection flow.

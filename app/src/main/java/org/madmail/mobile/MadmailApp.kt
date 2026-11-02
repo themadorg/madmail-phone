@@ -69,7 +69,7 @@ internal fun MadmailApp() {
     Surface(color = colors.background) {
         Box(Modifier.fillMaxSize()) {
             if (selectedId.isBlank() || setup) {
-                HostSetup(phoneSetup, phoneConfigured, identities["phone"]?.name.orEmpty(), onPhone = { phoneSetup = true }, onRemote = { addServer = true },
+                HostSetup(phoneSetup, phoneConfigured, identities["phone"]?.name.orEmpty(), firstRun = selectedId.isBlank(), onPhone = { phoneSetup = true }, onRemote = { addServer = true },
                     onBack = { phoneSetup = false }, onCancel = if (selectedId.isNotBlank()) ({ setup = false; phoneSetup = false }) else null,
                     onComplete = { name ->
                         val updated = (identities["phone"] ?: org.madmail.mobile.core.ServerIdentity()).copy(name = name)
