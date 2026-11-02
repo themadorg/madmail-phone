@@ -1,6 +1,8 @@
 package org.madmail.mobile
 
-import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -12,7 +14,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -23,7 +24,6 @@ import androidx.compose.ui.platform.LocalContext
 import org.madmail.mobile.core.ServerIdentityStore
 import org.madmail.mobile.core.ServerWorkspace
 import org.madmail.mobile.core.ServerProfiles
-import org.madmail.mobile.core.RemoteServer
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -43,62 +43,90 @@ internal fun MadmailApp() {
     var page by rememberSaveable { mutableIntStateOf(0) }
     var editingServer by remember { mutableStateOf(false) }
     var chooseServer by rememberSaveable { mutableStateOf(false) }
+    var setup by rememberSaveable { mutableStateOf(false) }
+    var phoneSetup by rememberSaveable { mutableStateOf(false) }
     var addServer by rememberSaveable { mutableStateOf(false) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val profiles = remember { ServerProfiles(context) }
     var remotes by remember { mutableStateOf(profiles.load()) }
     var selectedId by remember { mutableStateOf(profiles.selected()) }
+    var phoneConfigured by remember { mutableStateOf(profiles.phoneConfigured()) }
     val remote = remotes.find { it.id == selectedId }
     val serverId = remote?.id ?: "phone"
     val identityStore = remember { ServerIdentityStore(context) }
     var identities by remember { mutableStateOf((listOf("phone") + remotes.map { it.id }).associateWith { identityStore.read(it) }) }
     val identity = identities[serverId] ?: org.madmail.mobile.core.ServerIdentity()
-    val serverName = identity.name.ifBlank { remote?.host ?: "This phone" }
 
     val workspace = remember { ServerWorkspace() }
     val selectServer: (String) -> Unit = { selectedId = it; profiles.select(it) }
 
     val haze = remember { HazeState() }
 
-    val pageScroll = remember(serverId, page) { androidx.compose.foundation.ScrollState(0) }
     val colors = MaterialTheme.colorScheme
+    BackHandler(selectedId.isNotBlank() && page != 0 && !setup && !chooseServer && !addServer) { page = 0; openHostingPreferences = false }
+    BackHandler(phoneSetup || setup) { if (phoneSetup) phoneSetup = false else setup = false }
     Surface(color = colors.background) {
         Box(Modifier.fillMaxSize()) {
-            Column(Modifier.fillMaxSize().statusBarsPadding().hazeSource(haze).verticalScroll(pageScroll)
-                .padding(horizontal = 24.dp).padding(top = 28.dp, bottom = 140.dp),
-                verticalArrangement = Arrangement.spacedBy(24.dp)) {
-                if (page == 1) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(listOf("Overview", "Invite", "Settings")[page], modifier = Modifier.weight(1f), style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.SemiBold)
-                    if (page == 1) Text(serverName, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, color = colors.onSurfaceVariant, textAlign = androidx.compose.ui.text.style.TextAlign.End)
-                }
-                key(serverId) {
+            if (selectedId.isBlank() || setup) {
+                HostSetup(phoneSetup, phoneConfigured, identities["phone"]?.name.orEmpty(), onPhone = { phoneSetup = true }, onRemote = { addServer = true },
+                    onBack = { phoneSetup = false }, onCancel = if (selectedId.isNotBlank()) ({ setup = false; phoneSetup = false }) else null,
+                    onComplete = { name ->
+                        val updated = (identities["phone"] ?: org.madmail.mobile.core.ServerIdentity()).copy(name = name)
+                        identityStore.save("phone", updated)
+                        identities = identities + ("phone" to updated)
+                        profiles.configurePhone(); phoneConfigured = true; selectServer("phone"); setup = false; phoneSetup = false; page = 0 })
+            } else {
+                AnimatedContent(targetState = serverId to page, transitionSpec = {
+                    (fadeIn(tween(220, delayMillis = 60)) + slideInHorizontally(tween(280)) { if (targetState.second >= initialState.second) it / 12 else -it / 12 }) togetherWith fadeOut(tween(120))
+                }, label = "Workspace navigation") { destination ->
+                    val displayedPage = destination.second
+                    val displayedId = destination.first
+                    val displayedRemote = remotes.find { it.id == displayedId }
+                    val displayedIdentity = identities[displayedId] ?: org.madmail.mobile.core.ServerIdentity()
+                    val displayedName = displayedIdentity.name.ifBlank { displayedRemote?.host ?: "This phone" }
+                    val displayedScroll = remember(destination) { androidx.compose.foundation.ScrollState(0) }
+                    Column(Modifier.fillMaxSize().statusBarsPadding().hazeSource(haze).verticalScroll(displayedScroll)
+                        .padding(horizontal = 24.dp).padding(top = 28.dp, bottom = 140.dp),
+                        verticalArrangement = Arrangement.spacedBy(24.dp)) {
+                        if (displayedPage == 1) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(listOf("Overview", "Invite", "Settings")[displayedPage], modifier = Modifier.weight(1f), style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.SemiBold)
+                            if (displayedPage == 1) Text(displayedName, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, color = colors.onSurfaceVariant, textAlign = androidx.compose.ui.text.style.TextAlign.End)
+                        }
+                        key(displayedId) {
 
-                when (page) {
+                        when (displayedPage) {
 
-                    0 -> OverviewScreen(serverName, identity, remote, onSettings = { openHostingPreferences = remote == null; page = 2 })
-                    1 -> RegistrationScreen(serverId, serverName, remote, workspace.invitation(serverId)) { workspace.updateInvitation(serverId, it) }
-                    else -> ServerSettingsScreen(serverId, serverName, remote, initiallyShowHosting = openHostingPreferences, onNavigate = { scope.launch { pageScroll.scrollTo(0) } }) {
-                        remote?.let { saved -> scope.launch(Dispatchers.IO) { org.madmail.mobile.engine.RemoteEngine.get(context, saved).disconnect() } }
-                        workspace.forget(serverId)
-                        org.madmail.mobile.engine.InvitationCreation.forget(serverId)
-                        org.madmail.mobile.engine.RemoteCredentials(context, serverId).delete()
-                        context.getSharedPreferences("ssh-host-keys", android.content.Context.MODE_PRIVATE).edit().remove(serverId).apply()
-                        context.getSharedPreferences("remote-options-$serverId", android.content.Context.MODE_PRIVATE).edit().clear().apply()
-                        profiles.remove(serverId)
-                        remotes = profiles.load()
-                        selectServer("phone")
+                            0 -> {
+                                OverviewScreen(displayedName, displayedIdentity, displayedRemote, onSettings = { openHostingPreferences = displayedRemote == null; page = 2 }) {
+                                    if (displayedRemote == null) RegistrationScreen(displayedId, displayedName, null, workspace.invitation(displayedId)) { workspace.updateInvitation(displayedId, it) }
+                                    else TextButton(onClick = { page = 1 }) { Icon(Icons.Outlined.QrCode2, null); Spacer(Modifier.width(8.dp)); Text("Connect another device") }
+                                }
+                            }
+                            1 -> RegistrationScreen(displayedId, displayedName, displayedRemote, workspace.invitation(displayedId)) { workspace.updateInvitation(displayedId, it) }
+                            else -> ServerSettingsScreen(displayedId, displayedName, displayedRemote, initiallyShowHosting = openHostingPreferences, onNavigate = { scope.launch { displayedScroll.scrollTo(0) } }) {
+                                displayedRemote?.let { saved -> scope.launch(Dispatchers.IO) { org.madmail.mobile.engine.RemoteEngine.get(context, saved).disconnect() } }
+                                workspace.forget(displayedId)
+                                org.madmail.mobile.engine.InvitationCreation.forget(displayedId)
+                                org.madmail.mobile.engine.RemoteCredentials(context, displayedId).delete()
+                                context.getSharedPreferences("ssh-host-keys", android.content.Context.MODE_PRIVATE).edit().remove(displayedId).apply()
+                                context.getSharedPreferences("remote-options-$displayedId", android.content.Context.MODE_PRIVATE).edit().clear().apply()
+                                profiles.remove(displayedId)
+                                remotes = profiles.load()
+                                selectedId = profiles.selected()
+                            }
+
+                        }
+
+                        }
                     }
-
                 }
-
-                }
+                GlassDock(haze, page, chooseServer, identity.mark, remote == null, { openHostingPreferences = false; page = it }, { chooseServer = true }, { setup = true }, Modifier.align(Alignment.BottomCenter))
             }
-            GlassDock(haze, page, chooseServer, identity.mark, remote == null, { page = it }, { chooseServer = true }, { addServer = true }, Modifier.align(Alignment.BottomCenter))
         }
     }
     if (chooseServer) ModalBottomSheet(onDismissRequest = { if (!editingServer) chooseServer = false }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true, confirmValueChange = { it != SheetValue.Hidden || !editingServer })) {
-        ServerPicker(serverId, remotes, identities, { selectServer(it); chooseServer = false }, { chooseServer = false; addServer = true }, { id, updated ->
+        ServerPicker(serverId, remotes, identities, phoneConfigured, { selectServer(it); page = 0; openHostingPreferences = false; chooseServer = false }, { chooseServer = false; setup = true }, { id, updated ->
             identityStore.save(id, updated)
             identities = identities + (id to updated)
         }, onEditing = { editingServer = it })
@@ -112,6 +140,8 @@ internal fun MadmailApp() {
             selectServer(saved.id)
             page = 0
             addServer = false
+            setup = false
+            phoneSetup = false
         })
     }
 }
@@ -145,7 +175,7 @@ private fun GlassDock(haze: HazeState, page: Int, choosingServer: Boolean, serve
 
         }
         FilledIconButton(onClick = onAdd, modifier = Modifier.size(52.dp).clip(CircleShape).hazeEffect(haze, glass).border(1.dp, edge, CircleShape), colors = IconButtonDefaults.filledIconButtonColors(containerColor = Color.Transparent, contentColor = colors.primary)) {
-            Icon(Icons.Outlined.Add, "Set up a remote server", Modifier.size(28.dp))
+            Icon(Icons.Outlined.Add, "Set up a server", Modifier.size(28.dp))
         }
     }
 }

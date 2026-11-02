@@ -1,5 +1,10 @@
 package org.madmail.mobile
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -91,126 +96,130 @@ internal fun ServerSettingsScreen(serverId: String, serverName: String, remote: 
             Text("Saved changes need a restart.", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
             TextButton(onClick = { restart = true }, enabled = ready && !state.busy && (remote == null || remoteState?.managed == true)) { Text("Restart") }
         }
-        when (page) {
-            "root" -> {
-                SettingsGroup {
-                    settingsPages.take(3).forEach { item -> SettingsNavigation(item.title, item.subtitle, item.icon) { navigate(item.id) } }
-                }
-                SettingsGroup {
-                    settingsPages.slice(3..6).forEach { item -> SettingsNavigation(item.title, item.subtitle, item.icon) { navigate(item.id) } }
-                }
-                SettingsGroup {
-                    settingsPages.drop(7).forEach { item -> SettingsNavigation(item.title, item.subtitle, item.icon) { navigate(item.id) } }
-                }
-                HorizontalDivider()
-                AppLockSettings()
-            }
-            "connection" -> {
-                if (remote != null) {
-                    SettingsGroup {
-                        if (remoteState?.transport == "API") SettingsCopyRow("Admin API", remoteState.apiEndpoint ?: "Not configured", Icons.Outlined.Api)
-                        else {
-                        SettingsCopyRow("SSH host", remote.host, Icons.Outlined.Dns)
-                        SettingsCopyRow("Username", remote.user, Icons.Outlined.PersonOutline)
-                        SettingsCopyRow("SSH port", remote.port.toString(), Icons.Outlined.SettingsEthernet)
-                        val fingerprint = RemoteEngine.get(context, remote).fingerprint
-                        fingerprint?.let { SettingsCopyRow("Host fingerprint", it, Icons.Outlined.Fingerprint) }
+        AnimatedContent(page, transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "Settings navigation") { displayedPage ->
+            Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                when (displayedPage) {
+                    "root" -> {
+                        SettingsGroup {
+                            settingsPages.take(3).forEach { item -> SettingsNavigation(item.title, item.subtitle, item.icon) { navigate(item.id) } }
                         }
-                    }
-                    RemoteControls(remote)
-                    TextButton(onClick = { remove = true }) { Icon(Icons.Outlined.DeleteOutline, null, tint = colors.error); Spacer(Modifier.width(8.dp)); Text("Remove saved server", color = colors.error) }
-                } else {
-                    SettingsGroup {
-                        SettingsCopyRow("SMTP TLS", "11465", Icons.Outlined.Upload)
-                        SettingsCopyRow("IMAP TLS", "11993", Icons.Outlined.Download)
-                        SettingsCopyRow("HTTPS", "18443", Icons.Outlined.Lock)
-                    }
-                    Text("These hosting ports work without root. Guests connect through the phone’s Wi-Fi or hotspot address.", color = colors.onSurfaceVariant)
-                    val prefs = remember { context.getSharedPreferences("server-settings-phone", Context.MODE_PRIVATE) }
-                    var root by remember { mutableStateOf(prefs.getBoolean("root_ports", false)) }
-                    if (root) {
-                        Text("The saved standard-port preference prevents startup because root forwarding is not available yet.", color = colors.error)
-                        Button(onClick = { prefs.edit().putBoolean("root_ports", false).apply(); root = false }) { Text("Use default ports") }
-                    }
-                }
-            }
-            "accounts" -> {
-                val quota = state.quota
-                val rows = state.accounts?.optJSONArray("accounts")
-                if (ready && rows != null) {
-                    Text("${NumberFormat.getIntegerInstance().format(rows.length())} accounts", style = MaterialTheme.typography.titleMedium)
-                    SettingsGroup {
-                        SettingsNavigation("Default storage quota", quota?.optLong("default_quota_bytes")?.let { Formatter.formatFileSize(context, it) } ?: "Not loaded", Icons.Outlined.Storage, enabled) { quotaTarget = ""; quotaInitial = quota?.optLong("default_quota_bytes") ?: 0L }
-                    }
-                    if (rows.length() == 0) Text("No accounts yet. Create an account QR from Invite.", color = colors.onSurfaceVariant)
-                    SettingsGroup {
-                        for (i in 0 until rows.length()) {
-                            val row = rows.getJSONObject(i)
-                            SettingsNavigation(row.getString("username"), "${Formatter.formatFileSize(context, row.optLong("used_bytes"))} used · ${Formatter.formatFileSize(context, row.optLong("max_bytes"))} quota", Icons.Outlined.PersonOutline) { account = row; navigate("account") }
+                        SettingsGroup {
+                            settingsPages.slice(3..6).forEach { item -> SettingsNavigation(item.title, item.subtitle, item.icon) { navigate(item.id) } }
                         }
-                    }
-                }
-            }
-            "account" -> account?.let { row ->
-                val username = row.getString("username")
-                val updated = state.accounts?.optJSONArray("accounts")?.let { array -> (0 until array.length()).map { array.getJSONObject(it) }.find { it.optString("username") == username } } ?: row
-                SettingsGroup {
-                    SettingsCopyRow("Email address", username, Icons.Outlined.AlternateEmail)
-                    SettingsCopyRow("Storage used", Formatter.formatFileSize(context, updated.optLong("used_bytes")), Icons.Outlined.Storage)
-                    SettingsNavigation("Storage quota", Formatter.formatFileSize(context, updated.optLong("max_bytes")), Icons.Outlined.DataUsage, enabled) { quotaTarget = username; quotaInitial = updated.optLong("max_bytes") }
-                }
-                TextButton(onClick = { deleteAccount = true }, enabled = enabled) { Icon(Icons.Outlined.DeleteOutline, null, tint = colors.error); Spacer(Modifier.width(8.dp)); Text("Delete account", color = colors.error) }
-            }
-            else -> {
-                SettingsGroup {
-                    serverSettings.filter { it.section == page }.forEach { setting ->
-                        val raw = if (ready) state.values?.opt(setting.key)?.takeUnless { it == JSONObject.NULL } else null
-                        val current = if (raw is JSONObject) raw.optString("value") else raw?.toString()
-                        val checked = when (current) { "enabled", "open", "true" -> true; "disabled", "closed", "false" -> false; else -> null }
-                        val display = when {
-                            current == null -> if (ready && state.values != null) "Not reported by this server" else "Not loaded"
-                            current.isEmpty() -> "Hosting default"
-                            setting.kind == SettingKind.Secret -> "••••••••"
-                            setting.kind == SettingKind.PositiveNumber -> current.toLongOrNull()?.let { NumberFormat.getIntegerInstance().format(it) } ?: current
-                            else -> setting.display(current)
+                        SettingsGroup {
+                            settingsPages.drop(7).forEach { item -> SettingsNavigation(item.title, item.subtitle, item.icon) { navigate(item.id) } }
                         }
-                        if (setting.kind == SettingKind.Toggle) {
-                            Row(Modifier.fillMaxWidth().then(if (checked != null) Modifier.toggleable(value = checked, enabled = enabled, role = Role.Switch, onValueChange = { controller.save(setting, it.toString()) }) else Modifier).padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                Icon(settingIcon(setting), null, Modifier.size(22.dp), tint = colors.primary)
-                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Text(setting.title, style = MaterialTheme.typography.bodyLarge)
-                                    if (setting.hint.isNotBlank()) Text(setting.hint, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
-                                    if (checked == null) Text(display, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
+                        HorizontalDivider()
+                        AppLockSettings()
+                    }
+                    "connection" -> {
+                        if (remote != null) {
+                            SettingsGroup {
+                                if (remoteState?.transport == "API") SettingsCopyRow("Admin API", remoteState.apiEndpoint ?: "Not configured", Icons.Outlined.Api)
+                                else {
+                                SettingsCopyRow("SSH host", remote.host, Icons.Outlined.Dns)
+                                SettingsCopyRow("Username", remote.user, Icons.Outlined.PersonOutline)
+                                SettingsCopyRow("SSH port", remote.port.toString(), Icons.Outlined.SettingsEthernet)
+                                val fingerprint = RemoteEngine.get(context, remote).fingerprint
+                                fingerprint?.let { SettingsCopyRow("Host fingerprint", it, Icons.Outlined.Fingerprint) }
                                 }
-                                if (checked != null) Switch(checked = checked, onCheckedChange = null, enabled = enabled)
-                                else Icon(Icons.Outlined.HelpOutline, "Status unknown", tint = colors.onSurfaceVariant)
                             }
+                            RemoteControls(remote)
+                            TextButton(onClick = { remove = true }) { Icon(Icons.Outlined.DeleteOutline, null, tint = colors.error); Spacer(Modifier.width(8.dp)); Text("Remove saved server", color = colors.error) }
                         } else {
-                            Row(Modifier.fillMaxWidth().clickable(enabled = enabled && current != null && setting.kind != SettingKind.Managed) { editing = setting }.padding(start = 16.dp, end = 4.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                Icon(settingIcon(setting), null, Modifier.size(22.dp), tint = colors.primary)
-                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Text(setting.title, style = MaterialTheme.typography.bodyLarge)
-                                    Text(display, style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"), color = colors.onSurfaceVariant)
-                                }
-                                if (!current.isNullOrBlank() && setting.kind != SettingKind.Secret) IconButton(onClick = { copySetting(context, setting.title, current) }) { Icon(Icons.Outlined.ContentCopy, "Copy ${setting.title}", Modifier.size(18.dp), tint = colors.primary) }
-                                if (setting.kind != SettingKind.Managed) Icon(Icons.Outlined.Edit, null, Modifier.padding(end = 12.dp).size(18.dp), tint = colors.onSurfaceVariant)
+                            SettingsGroup {
+                                SettingsCopyRow("SMTP TLS", "11465", Icons.Outlined.Upload)
+                                SettingsCopyRow("IMAP TLS", "11993", Icons.Outlined.Download)
+                                SettingsCopyRow("HTTPS", "18443", Icons.Outlined.Lock)
+                            }
+                            Text("These hosting ports work without root. Guests connect through the phone’s Wi-Fi or hotspot address.", color = colors.onSurfaceVariant)
+                            val prefs = remember { context.getSharedPreferences("server-settings-phone", Context.MODE_PRIVATE) }
+                            var root by remember { mutableStateOf(prefs.getBoolean("root_ports", false)) }
+                            if (root) {
+                                Text("The saved standard-port preference prevents startup because root forwarding is not available yet.", color = colors.error)
+                                Button(onClick = { prefs.edit().putBoolean("root_ports", false).apply(); root = false }) { Text("Use default ports") }
                             }
                         }
-                        HorizontalDivider(Modifier.padding(start = 50.dp), color = colors.outlineVariant.copy(alpha = .6f))
                     }
-                }
-                if (page == "registration") Text("Create, share and revoke invitation tokens from the Invite tab.", color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
-                if (page == "network") Text("App-managed mail and web ports are read-only here to keep hosting, health checks and SSH tunnels reachable.", color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
-                if (page == "federation" && ready) state.dkim?.let { dkim ->
-                    Text("Domain signing", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    SettingsGroup {
-                        listOf("domain" to "Domain", "selector" to "Selector", "dns_name" to "DNS record", "txt" to "TXT value").forEach { (key, label) ->
-                            dkim.optString(key).takeUnless { it.isBlank() || it == "null" }?.let { SettingsCopyRow(label, it, Icons.Outlined.VerifiedUser) }
+                    "accounts" -> {
+                        val quota = state.quota
+                        val rows = state.accounts?.optJSONArray("accounts")
+                        if (ready && rows != null) {
+                            Text("${NumberFormat.getIntegerInstance().format(rows.length())} accounts", style = MaterialTheme.typography.titleMedium)
+                            SettingsGroup {
+                                SettingsNavigation("Default storage quota", quota?.optLong("default_quota_bytes")?.let { Formatter.formatFileSize(context, it) } ?: "Not loaded", Icons.Outlined.Storage, enabled) { quotaTarget = ""; quotaInitial = quota?.optLong("default_quota_bytes") ?: 0L }
+                            }
+                            if (rows.length() == 0) Text("No accounts yet. Create an account QR from Invite.", color = colors.onSurfaceVariant)
+                            SettingsGroup {
+                                for (i in 0 until rows.length()) {
+                                    val row = rows.getJSONObject(i)
+                                    SettingsNavigation(row.getString("username"), "${Formatter.formatFileSize(context, row.optLong("used_bytes"))} used · ${Formatter.formatFileSize(context, row.optLong("max_bytes"))} quota", Icons.Outlined.PersonOutline) { account = row; navigate("account") }
+                                }
+                            }
                         }
                     }
-                }
-                if (page == "administration") {
-                    SettingsNavigation("Restart server", if (remote == null) "Restart the phone’s Madmail process" else if (remoteState?.managed == true) "Restart the managed service over SSH" else "Requires the app-managed SSH service", Icons.Outlined.RestartAlt, ready && !state.busy && (remote == null || remoteState?.managed == true)) { restart = true }
+                    "account" -> account?.let { row ->
+                        val username = row.getString("username")
+                        val updated = state.accounts?.optJSONArray("accounts")?.let { array -> (0 until array.length()).map { array.getJSONObject(it) }.find { it.optString("username") == username } } ?: row
+                        SettingsGroup {
+                            SettingsCopyRow("Email address", username, Icons.Outlined.AlternateEmail)
+                            SettingsCopyRow("Storage used", Formatter.formatFileSize(context, updated.optLong("used_bytes")), Icons.Outlined.Storage)
+                            SettingsNavigation("Storage quota", Formatter.formatFileSize(context, updated.optLong("max_bytes")), Icons.Outlined.DataUsage, enabled) { quotaTarget = username; quotaInitial = updated.optLong("max_bytes") }
+                        }
+                        TextButton(onClick = { deleteAccount = true }, enabled = enabled) { Icon(Icons.Outlined.DeleteOutline, null, tint = colors.error); Spacer(Modifier.width(8.dp)); Text("Delete account", color = colors.error) }
+                    }
+                    else -> {
+                        SettingsGroup {
+                            serverSettings.filter { it.section == displayedPage }.forEach { setting ->
+                                val raw = if (ready) state.values?.opt(setting.key)?.takeUnless { it == JSONObject.NULL } else null
+                                val current = if (raw is JSONObject) raw.optString("value") else raw?.toString()
+                                val checked = when (current) { "enabled", "open", "true" -> true; "disabled", "closed", "false" -> false; else -> null }
+                                val display = when {
+                                    current == null -> if (ready && state.values != null) "Not reported by this server" else "Not loaded"
+                                    current.isEmpty() -> "Hosting default"
+                                    setting.kind == SettingKind.Secret -> "••••••••"
+                                    setting.kind == SettingKind.PositiveNumber -> current.toLongOrNull()?.let { NumberFormat.getIntegerInstance().format(it) } ?: current
+                                    else -> setting.display(current)
+                                }
+                                if (setting.kind == SettingKind.Toggle) {
+                                    Row(Modifier.fillMaxWidth().then(if (checked != null) Modifier.toggleable(value = checked, enabled = enabled, role = Role.Switch, onValueChange = { controller.save(setting, it.toString()) }) else Modifier).padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                        Icon(settingIcon(setting), null, Modifier.size(22.dp), tint = colors.primary)
+                                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            Text(setting.title, style = MaterialTheme.typography.bodyLarge)
+                                            if (setting.hint.isNotBlank()) Text(setting.hint, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
+                                            if (checked == null) Text(display, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
+                                        }
+                                        if (checked != null) Switch(checked = checked, onCheckedChange = null, enabled = enabled)
+                                        else Icon(Icons.Outlined.HelpOutline, "Status unknown", tint = colors.onSurfaceVariant)
+                                    }
+                                } else {
+                                    Row(Modifier.fillMaxWidth().clickable(enabled = enabled && current != null && setting.kind != SettingKind.Managed) { editing = setting }.padding(start = 16.dp, end = 4.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                        Icon(settingIcon(setting), null, Modifier.size(22.dp), tint = colors.primary)
+                                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            Text(setting.title, style = MaterialTheme.typography.bodyLarge)
+                                            Text(display, style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"), color = colors.onSurfaceVariant)
+                                        }
+                                        if (!current.isNullOrBlank() && setting.kind != SettingKind.Secret) IconButton(onClick = { copySetting(context, setting.title, current) }) { Icon(Icons.Outlined.ContentCopy, "Copy ${setting.title}", Modifier.size(18.dp), tint = colors.primary) }
+                                        if (setting.kind != SettingKind.Managed) Icon(Icons.Outlined.Edit, null, Modifier.padding(end = 12.dp).size(18.dp), tint = colors.onSurfaceVariant)
+                                    }
+                                }
+                                HorizontalDivider(Modifier.padding(start = 50.dp), color = colors.outlineVariant.copy(alpha = .6f))
+                            }
+                        }
+                        if (displayedPage == "registration") Text("Create, share and revoke invitation tokens from the Invite tab.", color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+                        if (displayedPage == "network") Text("App-managed mail and web ports are read-only here to keep hosting, health checks and SSH tunnels reachable.", color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                        if (displayedPage == "federation" && ready) state.dkim?.let { dkim ->
+                            Text("Domain signing", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                            SettingsGroup {
+                                listOf("domain" to "Domain", "selector" to "Selector", "dns_name" to "DNS record", "txt" to "TXT value").forEach { (key, label) ->
+                                    dkim.optString(key).takeUnless { it.isBlank() || it == "null" }?.let { SettingsCopyRow(label, it, Icons.Outlined.VerifiedUser) }
+                                }
+                            }
+                        }
+                        if (displayedPage == "administration") {
+                            SettingsNavigation("Restart server", if (remote == null) "Restart the phone’s Madmail process" else if (remoteState?.managed == true) "Restart the managed service over SSH" else "Requires the app-managed SSH service", Icons.Outlined.RestartAlt, ready && !state.busy && (remote == null || remoteState?.managed == true)) { restart = true }
+                        }
+                    }
                 }
             }
         }

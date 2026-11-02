@@ -157,7 +157,18 @@ internal fun RegistrationScreen(serverId: String, serverName: String, remote: Re
             Icon(Icons.Outlined.Edit, "Edit guest-facing address", Modifier.size(20.dp))
         }
         if (phone) Text("Use Wi-Fi or hotspot for nearby guests, or a VPN / Tailscale address for guests on that network. Update this address when the network changes.", style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
-        Button(onClick = { create = true }, enabled = ready && !busy && !creationState.uncertain && InviteLinks.origin(origin) != null, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Icon(Icons.Outlined.Add, null); Spacer(Modifier.width(8.dp)); Text("Create invitation") }
+        if (bitmap == null) {
+            Button(onClick = {
+                error = null; notice = null
+                prefs.edit().putString("origin", origin).apply()
+                creation.create(origin, true, 1, "", "24h")
+            }, enabled = ready && !busy && !creationState.uncertain && InviteLinks.origin(origin) != null,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+                Icon(Icons.Outlined.QrCode2, null); Spacer(Modifier.width(8.dp)); Text("Generate connection QR")
+            }
+            Text("Creates a random account for one person. Scan in Delta Chat on their device. Complete first sign-in within 1 day. The QR contains its password and trusts this server’s self-signed certificate.", style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
+        }
+        OutlinedButton(onClick = { create = true }, enabled = ready && !busy && !creationState.uncertain && InviteLinks.origin(origin) != null, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Icon(Icons.Outlined.Add, null); Spacer(Modifier.width(8.dp)); Text("Create invitation") }
         TextButton(onClick = { manage = true }, enabled = ready, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.ConfirmationNumber, null, Modifier.size(20.dp)); Spacer(Modifier.width(8.dp)); Text(if (loaded) "Manage invitations · ${numbers.format(invitations.size)}" else "Manage invitations") }
         if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
         notice?.let { Text(it, color = colors.primary, style = MaterialTheme.typography.bodyMedium) }

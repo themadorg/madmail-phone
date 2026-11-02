@@ -36,6 +36,7 @@ internal fun EngineControls() {
     val start = { context.startForegroundService(Intent(context, HostingService::class.java)); Unit }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { start() }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        HostingStatus(state.phase)
         FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Button(onClick = {
                 if (state.phase == EnginePhase.Running) context.startService(Intent(context, HostingService::class.java).setAction("stop"))

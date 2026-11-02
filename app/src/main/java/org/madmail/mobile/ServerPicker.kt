@@ -52,12 +52,12 @@ internal fun ServerMark(mark: String, phone: Boolean, modifier: Modifier = Modif
 }
 
 @Composable
-internal fun ServerPicker(selectedId: String, remotes: List<RemoteServer>, identities: Map<String, ServerIdentity>, onSelect: (String) -> Unit, onAdd: () -> Unit, onSave: (String, ServerIdentity) -> Unit, onEditing: (Boolean) -> Unit) {
+internal fun ServerPicker(selectedId: String, remotes: List<RemoteServer>, identities: Map<String, ServerIdentity>, phoneConfigured: Boolean, onSelect: (String) -> Unit, onAdd: () -> Unit, onSave: (String, ServerIdentity) -> Unit, onEditing: (Boolean) -> Unit) {
     var editing by remember { mutableStateOf<String?>(null) }
     var editMode by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
     val context = androidx.compose.ui.platform.LocalContext.current
-    val entries = listOf(Triple("phone", "This phone", "On this device")) + remotes.map {
+    val entries = (if (phoneConfigured) listOf(Triple("phone", "This phone", "On this device")) else emptyList()) + remotes.map {
         val options = context.getSharedPreferences("remote-options-${it.id}", android.content.Context.MODE_PRIVATE)
         Triple(it.id, it.host, if (options.getString("preferred", "ssh") == "api") "Admin API · ${it.host}" else it.address)
     }
@@ -97,7 +97,7 @@ internal fun ServerPicker(selectedId: String, remotes: List<RemoteServer>, ident
             HorizontalDivider(Modifier.padding(top = 12.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .5f))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 TextButton(onClick = onAdd, modifier = Modifier.weight(1f).heightIn(min = 52.dp), contentPadding = PaddingValues(12.dp)) {
-                    Icon(Icons.Outlined.AddCircleOutline, null, Modifier.size(24.dp)); Spacer(Modifier.width(12.dp)); Text("Add remote server", Modifier.weight(1f))
+                    Icon(Icons.Outlined.AddCircleOutline, null, Modifier.size(24.dp)); Spacer(Modifier.width(12.dp)); Text("Set up a server", Modifier.weight(1f))
                 }
                 IconButton(onClick = { editMode = !editMode }) {
                     Icon(if (editMode) Icons.Outlined.Check else Icons.Outlined.Edit,

@@ -10,7 +10,7 @@ data class RemoteServer(val id: String, val host: String, val user: String, val 
 }
 
 /** Only connection metadata; credentials and host trust must use separate secure storage. */
-class ServerProfiles(context: Context) {
+class ServerProfiles(private val context: Context) {
     private val prefs = context.getSharedPreferences("server-profiles", Context.MODE_PRIVATE)
     fun load(): List<RemoteServer> = runCatching {
         val items = JSONArray(prefs.getString("remotes", "[]"))
@@ -19,7 +19,10 @@ class ServerProfiles(context: Context) {
             RemoteServer(item.getString("id"), item.getString("host"), item.getString("user"), item.getInt("port"))
         }
     }.getOrDefault(emptyList())
-    fun selected(): String = prefs.getString("selected", "phone") ?: "phone"
+    fun phoneConfigured(): Boolean = prefs.getBoolean("phone-configured", false) ||
+        java.io.File(context.filesDir, "madmail/chatmail.toml").exists()
+    fun configurePhone() { prefs.edit().putBoolean("phone-configured", true).apply(); select("phone") }
+    fun selected(): String = resolveServerSelection(prefs.getString("selected", null), phoneConfigured(), load().map { it.id })
     fun select(id: String) { prefs.edit().putString("selected", id).apply() }
     fun save(host: String, user: String, port: Int): RemoteServer {
         val servers = load()
@@ -31,7 +34,7 @@ class ServerProfiles(context: Context) {
     }
     fun remove(id: String) {
         write(load().filterNot { it.id == id })
-        if (selected() == id) select("phone")
+        if (prefs.getString("selected", null) == id) prefs.edit().remove("selected").apply()
     }
     private fun write(servers: List<RemoteServer>) {
         val items = JSONArray()
@@ -39,3 +42,12 @@ class ServerProfiles(context: Context) {
         prefs.edit().putString("remotes", items.toString()).apply()
     }
 }
+
+/** A missing or removed profile never silently creates a phone workspace. */
+internal fun resolveServerSelection(saved: String?, phoneConfigured: Boolean, remoteIds: List<String>): String =
+    when {
+        saved == "phone" && phoneConfigured -> "phone"
+        saved in remoteIds -> saved!!
+        phoneConfigured -> "phone"
+        else -> remoteIds.firstOrNull().orEmpty()
+    }

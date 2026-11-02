@@ -38,7 +38,7 @@ import org.json.JSONObject
 import java.text.NumberFormat
 
 @Composable
-internal fun OverviewScreen(name: String, identity: ServerIdentity, remote: RemoteServer?, onSettings: () -> Unit) {
+internal fun OverviewScreen(name: String, identity: ServerIdentity, remote: RemoteServer?, onSettings: () -> Unit, connection: @Composable () -> Unit = {}) {
     val colors = MaterialTheme.colorScheme
     val context = LocalContext.current
     val phone = remote == null
@@ -78,6 +78,8 @@ internal fun OverviewScreen(name: String, identity: ServerIdentity, remote: Remo
             }
             if (phone) EngineControls() else RemoteControls(remote!!)
         }
+
+        connection()
 
         OverviewSection("Activity", Icons.Outlined.BarChart, if (overview == null) "Unavailable" else "Live") {
             OverviewDetail(Icons.Outlined.PeopleOutline, "Accounts", metric("users", "registered"))
