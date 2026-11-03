@@ -12,3 +12,6 @@ app/src/main/jniLibs/
 *.p12
 keystore.properties
 dist/
+
+# The Gradle wrapper must be committed; this overrides global *.jar ignores.
+!gradle/wrapper/gradle-wrapper.jar
