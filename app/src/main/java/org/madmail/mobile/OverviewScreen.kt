@@ -18,11 +18,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import org.madmail.mobile.core.PortMode
 import org.madmail.mobile.core.RemoteServer
 import org.madmail.mobile.core.ServerIdentity
@@ -58,14 +55,14 @@ internal fun OverviewScreen(name: String, identity: ServerIdentity, remote: Remo
     val version = if (phone) engineState.version ?: engine.selected?.version else remoteState?.version
 
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(24.dp)) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 4.dp)) {
-            ServerMark(identity.mark, phone, size = 56.dp)
-            Spacer(Modifier.height(18.dp))
-            Text(name, Modifier.semantics { heading() }, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.3).sp)
-            Spacer(Modifier.height(6.dp))
-            Text(if (phone) "Hosted on this phone" else if (remoteState?.transport == "API") "Admin API · ${remote!!.host}" else "SSH · ${remote!!.host}",
-                style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        // One title per page. The line under it only says what the name doesn't: where it runs and how it's reached.
+        val via = if (remoteState?.transport == "API") "Admin API" else "SSH"
+        val subtitle = when {
+            phone -> "Hosted on this phone".takeIf { name != "This phone" }
+            name.equals(remote!!.host, ignoreCase = true) -> via
+            else -> "$via · ${remote!!.host}"
         }
+        PageTitle(name, subtitle) { ServerMark(identity.mark, phone, Modifier.padding(start = 12.dp), size = 32.dp) }
 
         if (phone) EngineControls() else RemoteControls(remote!!)
 
@@ -139,10 +136,10 @@ internal fun OverviewScreen(name: String, identity: ServerIdentity, remote: Remo
     }
 }
 
-private val StatMark = 28.dp
+private val StatMark = 32.dp
 
 /** Where a stat row's label starts: 14dp padding, the mark, 12dp gap. Dividers and the storage meter align to it. */
-private val StatInset = 54.dp
+private val StatInset = 58.dp
 
 /** Caption, then the section's rows in a group. A live state rides on the caption's right edge. */
 @Composable

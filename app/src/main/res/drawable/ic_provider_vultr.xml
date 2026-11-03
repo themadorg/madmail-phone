@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Vultr mark from Simple Icons (CC0). Drawn white on the brand colour by ProviderMark. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M8.36 2.172 A1.194 1.194 0 0 0 7.348 1.6 H1.2 A1.2 1.2 0 0 0 0 2.8 a1.211 1.211 0 0 0 .182 .64 l11.6 18.4 a1.206 1.206 0 0 0 2.035 0 l3.075 -4.874 a1.229 1.229 0 0 0 .182 -.64 a1.211 1.211 0 0 0 -.182 -.642 z m10.349 8.68 a1.206 1.206 0 0 0 2.035 0 L21.8 9.178 l2.017 -3.2 a1.211 1.211 0 0 0 .183 -.64 a1.229 1.229 0 0 0 -.183 -.64 l-1.6 -2.526 a1.206 1.206 0 0 0 -1.016 -.571 h-6.148 a1.2 1.2 0 0 0 -1.201 1.2 a1.143 1.143 0 0 0 .188 .64 z" />
+</vector>

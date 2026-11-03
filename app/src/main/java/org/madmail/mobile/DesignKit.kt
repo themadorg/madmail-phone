@@ -68,6 +68,27 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.material.icons.rounded.PriorityHigh
+import androidx.compose.foundation.layout.Box
 import kotlinx.coroutines.delay
 
 // The Madmail kit: one warm page, white grouped cards, gradient squircle marks, one red pill per screen.
@@ -125,12 +146,12 @@ internal fun SelectedCheck() = Icon(Icons.Rounded.Check, null, Modifier.size(22.
 internal fun Squircle(top: Long, bottom: Long, icon: ImageVector, modifier: Modifier = Modifier, size: Dp = 40.dp) {
     Box(modifier.size(size).clip(RoundedCornerShape(size * 0.28f)).background(Brush.verticalGradient(listOf(Color(top), Color(bottom)))),
         contentAlignment = Alignment.Center) {
-        Icon(icon, null, Modifier.size(size * 0.56f), tint = Color.White)
+        Icon(icon, null, Modifier.size(size * 0.58f), tint = Color.White)
     }
 }
 
 @Composable
-internal fun TintIcon(tint: Tint, icon: ImageVector, modifier: Modifier = Modifier, size: Dp = 32.dp) = Squircle(tint.top, tint.bottom, icon, modifier, size)
+internal fun TintIcon(tint: Tint, icon: ImageVector, modifier: Modifier = Modifier, size: Dp = 36.dp) = Squircle(tint.top, tint.bottom, icon, modifier, size)
 
 /** A rounded white card of rows. Rows inside are separated with [RowDivider]. */
 @Composable
@@ -151,7 +172,7 @@ internal fun Footer(text: String, color: Color = MaterialTheme.colorScheme.onSur
     Text(text, Modifier.padding(horizontal = 16.dp).padding(top = 8.dp), style = MaterialTheme.typography.bodySmall, color = color)
 }
 
-/** Hairline between rows of a group, inset to where the row's text starts (70dp after a 40dp mark, 60dp after a 32dp mark, 16dp for plain rows). */
+/** Hairline between rows of a group, inset to where the row's text starts (70dp after a 40dp mark, 64dp after a 36dp mark, 16dp for plain rows). */
 @Composable
 internal fun RowDivider(inset: Dp = 70.dp) {
     Box(Modifier.padding(start = inset).fillMaxWidth().height(0.5.dp).background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)))
@@ -180,7 +201,8 @@ private fun RowText(title: String, detail: String?, modifier: Modifier, titleCol
 /** A tappable settings row: mark, title and one line, optional trailing value, chevron. */
 @Composable
 internal fun NavRow(mark: @Composable () -> Unit, title: String, detail: String? = null, value: String? = null, enabled: Boolean = true, onClick: () -> Unit) {
-    Row(Modifier.fillMaxWidth().clickable(enabled = enabled, role = Role.Button, onClick = onClick).heightIn(min = 60.dp)
+    val tap = rememberTap(onClick)
+    Row(Modifier.fillMaxWidth().clickable(enabled = enabled, role = Role.Button, onClick = tap).heightIn(min = 60.dp)
         .padding(start = 14.dp, end = 10.dp, top = 12.dp, bottom = 12.dp).graphicsLayer { alpha = if (enabled) 1f else 0.45f },
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
         mark()
@@ -194,7 +216,8 @@ internal fun NavRow(mark: @Composable () -> Unit, title: String, detail: String?
 @Composable
 internal fun ActionRow(label: String, onClick: () -> Unit, destructive: Boolean = false, enabled: Boolean = true, icon: ImageVector? = null) {
     val colors = MaterialTheme.colorScheme
-    Row(Modifier.fillMaxWidth().clickable(enabled = enabled, role = Role.Button, onClick = onClick).heightIn(min = 52.dp)
+    val tap = rememberTap(onClick)
+    Row(Modifier.fillMaxWidth().clickable(enabled = enabled, role = Role.Button, onClick = tap).heightIn(min = 52.dp)
         .padding(horizontal = 16.dp, vertical = 12.dp).graphicsLayer { alpha = if (enabled) 1f else 0.45f },
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         icon?.let { Icon(it, null, Modifier.size(20.dp), tint = if (destructive) colors.error else colors.onSurfaceVariant) }
@@ -216,7 +239,10 @@ internal fun InfoRow(tint: Tint, icon: ImageVector, title: String, detail: Strin
 /** A labelled switch row. The whole row toggles. */
 @Composable
 internal fun SwitchRow(tint: Tint, icon: ImageVector, title: String, detail: String?, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth().toggleable(checked, enabled = enabled, role = Role.Switch, onValueChange = onChange).heightIn(min = 60.dp)
+    val haptics = LocalHapticFeedback.current
+    Row(Modifier.fillMaxWidth().toggleable(checked, enabled = enabled, role = Role.Switch) {
+            haptics.performHapticFeedback(if (it) HapticFeedbackType.ToggleOn else HapticFeedbackType.ToggleOff); onChange(it)
+        }.heightIn(min = 60.dp)
         .padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 12.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
         TintIcon(tint, icon)
@@ -313,7 +339,7 @@ internal fun BrandButton(label: String, modifier: Modifier = Modifier, enabled: 
     val red by animateColorAsState(if (enabled) brandRed() else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f), tween(200, easing = Emphasized), label = "Action fill")
     val ink = if (enabled) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
     Box(modifier.fillMaxWidth().heightIn(min = ActionHeight).pressScale(source).clip(RoundedCornerShape(30.dp)).background(red)
-        .clickable(source, ripple(color = Color.White), enabled = enabled, role = Role.Button, onClick = onClick), contentAlignment = Alignment.Center) {
+        .clickable(source, ripple(color = Color.White), enabled = enabled, role = Role.Button, onClick = rememberTap(onClick)), contentAlignment = Alignment.Center) {
         AnimatedContent(label, label = "Action label", transitionSpec = { fadeIn(tween(200, 60)) togetherWith fadeOut(tween(100)) }) {
             Text(it, Modifier.padding(horizontal = 60.dp, vertical = 8.dp), color = ink, style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold, letterSpacing = 0.1.sp, textAlign = TextAlign.Center, maxLines = 2)
@@ -336,7 +362,7 @@ internal fun PillButton(label: String, onClick: () -> Unit, modifier: Modifier =
     val content = when { !enabled -> MaterialTheme.colorScheme.onSurfaceVariant; filled -> Color.White; else -> MaterialTheme.colorScheme.onPrimaryContainer }
     Row(modifier.then(if (wide) Modifier.fillMaxWidth() else Modifier).minimumInteractiveComponentSize().pressScale(source)
         .clip(CircleShape).background(container).graphicsLayer { alpha = if (enabled) 1f else 0.7f }
-        .clickable(source, ripple(), enabled = enabled, role = Role.Button, onClick = onClick)
+        .clickable(source, ripple(), enabled = enabled, role = Role.Button, onClick = rememberTap(onClick))
         .heightIn(min = if (wide) 52.dp else 40.dp).padding(horizontal = if (wide) 20.dp else 16.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)) {
         icon?.let { Icon(it, null, Modifier.size(18.dp), tint = content) }
@@ -353,13 +379,18 @@ internal fun KitSheet(onDismiss: () -> Unit, sheetState: SheetState = rememberMo
     ModalBottomSheet(onDismissRequest = onDismiss, modifier = Modifier.statusBarsPadding(), sheetState = sheetState, containerColor = panelColor(),
         shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
         dragHandle = { Box(Modifier.padding(top = 10.dp, bottom = 6.dp).size(36.dp, 5.dp).clip(CircleShape).background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f))
-            .semantics { contentDescription = "Drag handle" }) },
-        content = content)
+            .semantics { contentDescription = "Drag handle" }) }) {
+        // The sheet's window covers the app's, so it draws toasts itself while open.
+        Box {
+            Column(content = content)
+            Box(Modifier.matchParentSize()) { ToastLayer(16.dp) }
+        }
+    }
 }
 
 /** A sheet's title row: semibold title, optional line, optional mark on the left. */
 @Composable
-internal fun SheetHeader(title: String, subtitle: String? = null, mark: (@Composable () -> Unit)? = null) {
+internal fun SheetHeader(title: String, subtitle: String? = null, mark: (@Composable () -> Unit)? = null, trailing: (@Composable () -> Unit)? = null) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(top = 8.dp, bottom = 20.dp), verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp)) {
         mark?.invoke()
@@ -367,6 +398,7 @@ internal fun SheetHeader(title: String, subtitle: String? = null, mark: (@Compos
             Text(title, Modifier.semantics { heading() }, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
             subtitle?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
+        trailing?.invoke()
     }
 }
 
@@ -374,4 +406,116 @@ internal fun Modifier.pressScale(source: InteractionSource, pressedScale: Float 
     val pressed by source.collectIsPressedAsState()
     val scale by animateFloatAsState(if (pressed) pressedScale else 1f, tween(if (pressed) 90 else 220, easing = Emphasized), label = "Press scale")
     graphicsLayer { scaleX = scale; scaleY = scale }
+}
+
+/** Wraps a tap handler with the light tick every button and row in the kit gives. */
+@Composable
+internal fun rememberTap(onClick: () -> Unit): () -> Unit {
+    val haptics = LocalHapticFeedback.current
+    val latest by rememberUpdatedState(onClick)
+    return remember(haptics) { { haptics.performHapticFeedback(HapticFeedbackType.ContextClick); latest() } }
+}
+
+/** One short confirmation or failure at a time. Show it with `LocalToaster.current.show("Saved.")`. */
+@Stable
+internal class Toaster {
+    var current by mutableStateOf<ToastMessage?>(null)
+        private set
+    private var next = 0L
+    /** The last few toasts with when they were shown, newest first, for the debug menu. */
+    val history = mutableStateListOf<Pair<Long, ToastMessage>>()
+    fun show(text: String, error: Boolean = false) {
+        val message = ToastMessage(text, error, ++next)
+        current = message
+        history.add(0, System.currentTimeMillis() to message)
+        if (history.size > 20) history.removeAt(history.lastIndex)
+    }
+    /** Windows that can draw a toast, bottom first; only the last one does. */
+    internal val layers = mutableStateListOf<Any>()
+    fun dismiss(id: Long) { if (current?.id == id) current = null }
+}
+
+internal data class ToastMessage(val text: String, val error: Boolean, val id: Long)
+
+internal val LocalToaster = staticCompositionLocalOf { Toaster() }
+
+/** A confirmation in the kit: warm surface, large radius, cancel as text and the action as a pill. */
+@Composable
+internal fun KitDialog(title: String, text: String?, confirm: String, onConfirm: () -> Unit, onDismiss: () -> Unit, confirmEnabled: Boolean = true,
+    content: (@Composable ColumnScope.() -> Unit)? = null) {
+    AlertDialog(onDismissRequest = onDismiss, containerColor = panelColor(), shape = RoundedCornerShape(28.dp),
+        title = { Text(title, fontWeight = FontWeight.SemiBold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                text?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                content?.let { Column(content = it) }
+            }
+        },
+        confirmButton = { PillButton(confirm, onConfirm, filled = true, enabled = confirmEnabled) },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } })
+}
+
+/**
+ * Hosts toasts for everything inside it. The toast floats in its own window above the dock, holds for a moment and
+ * slides away; it never moves the layout under it. Sheets open in windows of their own, so each adds a [ToastLayer]
+ * and the topmost window draws the toast.
+ */
+@Composable
+internal fun ToastHost(content: @Composable () -> Unit) {
+    val toaster = remember { Toaster() }
+    val haptics = LocalHapticFeedback.current
+    val message = toaster.current
+    LaunchedEffect(message?.id) {
+        if (message == null) return@LaunchedEffect
+        haptics.performHapticFeedback(if (message.error) HapticFeedbackType.Reject else HapticFeedbackType.Confirm)
+        delay(if (message.error) 3600 else 2200)
+        toaster.dismiss(message.id)
+    }
+    CompositionLocalProvider(LocalToaster provides toaster) {
+        Box(Modifier.fillMaxSize()) {
+            content()
+            ToastLayer(ToastLift, aboveNavigationBar = true)
+        }
+    }
+}
+
+/** Draws the current toast at the bottom of its parent, [lift] above it, while this is the topmost layer. */
+@Composable
+internal fun ToastLayer(lift: Dp, aboveNavigationBar: Boolean = false) {
+    val toaster = LocalToaster.current
+    val layer = remember { Any() }
+    DisposableEffect(toaster) { toaster.layers.add(layer); onDispose { toaster.layers.remove(layer) } }
+    val visible = remember { MutableTransitionState(false) }
+    var shown by remember { mutableStateOf<ToastMessage?>(null) }
+    val message = toaster.current?.takeIf { toaster.layers.lastOrNull() == layer }
+    LaunchedEffect(message?.id) { if (message != null) shown = message; visible.targetState = message != null }
+    val bottom = (if (aboveNavigationBar) WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() else 0.dp) + lift - ToastShadowRoom
+    val offset = with(LocalDensity.current) { bottom.roundToPx() }
+    if (visible.currentState || visible.targetState) shown?.let { toast ->
+        Popup(Alignment.BottomCenter, IntOffset(0, -offset), properties = PopupProperties(focusable = false, clippingEnabled = false)) {
+            AnimatedVisibility(visible, enter = fadeIn(tween(180)) + slideInVertically(tween(420, easing = ExpoOut)) { it } + scaleIn(tween(420, easing = ExpoOut), 0.92f),
+                exit = fadeOut(tween(160)) + slideOutVertically(tween(220, easing = Emphasized)) { it / 2 }) {
+                ToastPill(toast)
+            }
+        }
+    }
+}
+
+/** The popup window is only as big as its content, so the pill keeps room around it for its shadow to fall into. */
+private val ToastShadowRoom = 20.dp
+/** Space between the bottom of the window and a toast, so it clears the floating dock. */
+private val ToastLift = 104.dp
+
+@Composable
+private fun ToastPill(toast: ToastMessage) {
+    val colors = MaterialTheme.colorScheme
+    Row(Modifier.padding(horizontal = 24.dp, vertical = ToastShadowRoom)
+        .shadow(8.dp, CircleShape, clip = false, ambientColor = Color.Black.copy(alpha = 0.12f), spotColor = Color.Black.copy(alpha = 0.28f)).clip(CircleShape).background(colors.inverseSurface)
+        .padding(start = 14.dp, end = 20.dp, top = 12.dp, bottom = 12.dp).semantics { liveRegion = LiveRegionMode.Polite },
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Box(Modifier.size(22.dp).clip(CircleShape).background(if (toast.error) brandRed() else Success), contentAlignment = Alignment.Center) {
+            Icon(if (toast.error) Icons.Rounded.PriorityHigh else Icons.Rounded.Check, null, Modifier.size(15.dp), tint = Color.White)
+        }
+        Text(toast.text, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, color = colors.inverseOnSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
+    }
 }

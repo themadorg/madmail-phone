@@ -145,7 +145,7 @@ internal fun AppLockSettings() {
         Group {
             SwitchRow(Tint.Graphite, Icons.Rounded.Lock, "App lock", null, lock.enabled, enabled = !lock.busy) { lock.authenticate(it) }
             if (lock.enabled) {
-                RowDivider(60.dp)
+                RowDivider(64.dp)
                 ActionRow("Lock now", { lock.lock() })
             }
         }

@@ -70,7 +70,7 @@ internal fun GuestAddressSheet(origin: String, remote: RemoteServer?, onDismiss:
                     AddressRow(Tint.Blue, Icons.Rounded.Dns, "Server address", value, draft == value) { choose(value) }
                 }
                 addresses.forEachIndexed { index, address ->
-                    if (index > 0 || server != null) RowDivider(60.dp)
+                    if (index > 0 || server != null) RowDivider(64.dp)
                     val (tint, icon) = when (address.network) {
                         GuestNetwork.Wifi -> Tint.Teal to Icons.Rounded.Wifi
                         GuestNetwork.Hotspot -> Tint.Teal to Icons.Rounded.WifiTethering
@@ -104,7 +104,7 @@ internal fun GuestAddressSheet(origin: String, remote: RemoteServer?, onDismiss:
                 Caption("Reachability")
                 Group {
                     results.forEachIndexed { index, (port, reachable) ->
-                        if (index > 0) RowDivider(60.dp)
+                        if (index > 0) RowDivider(64.dp)
                         InfoRow(if (reachable) Tint.Green else Tint.Red, if (reachable) Icons.Rounded.Check else Icons.Rounded.Close, "Port $port",
                             if (reachable) "Reachable" else "Not reachable")
                     }

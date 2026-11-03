@@ -1,38 +1,141 @@
 package org.madmail.mobile
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ErrorOutline
-import androidx.compose.material.icons.rounded.HourglassTop
 import androidx.compose.material.icons.rounded.PowerSettingsNew
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import org.madmail.mobile.engine.EnginePhase
 
-/** The phone's hosting state as the first row of a [Group]: green when live, gray when off, red when it failed. */
+/** A server's power, shared by the phone and remote servers so both read as one on/off switch. */
+internal enum class PowerPhase { Off, Starting, On, Stopping, Failed;
+    val busy get() = this == Starting || this == Stopping
+    /** Where the knob sits: it moves as soon as a start or stop is asked for, and the spinner covers the wait. */
+    val on get() = this == On || this == Starting
+}
+
+internal fun EnginePhase.power() = when (this) {
+    EnginePhase.Stopped -> PowerPhase.Off; EnginePhase.Starting -> PowerPhase.Starting; EnginePhase.Running -> PowerPhase.On
+    EnginePhase.Stopping -> PowerPhase.Stopping; EnginePhase.Failed -> PowerPhase.Failed
+}
+
+/** The phone's hosting power as the first row of a [Group]: tap anywhere on the row to switch hosting on or off. */
 @Composable
-internal fun HostingStatus(phase: EnginePhase) {
-    AnimatedContent(phase, Modifier.fillMaxWidth().semantics { liveRegion = LiveRegionMode.Polite }, transitionSpec = {
-        (fadeIn(tween(220, 60)) + slideInVertically(tween(320, 60, Emphasized)) { 12 }) togetherWith fadeOut(tween(100))
-    }, label = "Hosting state") { current ->
-        val busy = current == EnginePhase.Starting || current == EnginePhase.Stopping
-        InfoRow(
-            when (current) { EnginePhase.Running -> Tint.Green; EnginePhase.Failed -> Tint.Red; else -> Tint.Gray },
-            when (current) { EnginePhase.Running -> Icons.Rounded.CheckCircle; EnginePhase.Failed -> Icons.Rounded.ErrorOutline; EnginePhase.Stopped -> Icons.Rounded.PowerSettingsNew; else -> Icons.Rounded.HourglassTop },
-            when (current) { EnginePhase.Running -> "Hosting is live"; EnginePhase.Starting -> "Starting…"; EnginePhase.Stopping -> "Stopping…"; EnginePhase.Failed -> "Hosting failed"; else -> "Hosting is off" },
-            when (current) { EnginePhase.Running -> "Ready for connections."; EnginePhase.Failed -> "See the error below."; else -> null },
-        ) { if (busy) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) }
+internal fun HostingStatus(phase: EnginePhase, enabled: Boolean = true, onToggle: (Boolean) -> Unit) {
+    PowerRow(phase.power(),
+        when (phase) { EnginePhase.Running -> "Hosting is live"; EnginePhase.Starting -> "Starting…"; EnginePhase.Stopping -> "Stopping…"; EnginePhase.Failed -> "Hosting failed"; else -> "Hosting is off" },
+        when { phase == EnginePhase.Running -> "Ready for connections."; phase == EnginePhase.Failed -> "See the error below."; !enabled -> "Choose a version below."; else -> null },
+        PowerConfirm(
+            PowerQuestion("Turn on hosting?", "This phone starts serving mail. Keep it charged and online.", "Turn on"),
+            PowerQuestion("Turn off hosting?", "People on this phone can’t send or receive mail until you turn it back on.", "Turn off")),
+        enabled = enabled, onToggle = onToggle)
+}
+
+/** What a power switch asks before it acts, one question for each direction. */
+internal data class PowerConfirm(val on: PowerQuestion, val off: PowerQuestion)
+internal data class PowerQuestion(val title: String, val text: String, val action: String)
+
+/**
+ * A large power row. The whole row is the switch; [working] shows progress in the knob and ignores taps
+ * while something else (a refresh, an install) holds the server.
+ */
+@Composable
+internal fun PowerRow(power: PowerPhase, title: String, detail: String?, confirm: PowerConfirm, enabled: Boolean = true, working: Boolean = false,
+    onToggle: (Boolean) -> Unit) {
+    val haptics = LocalHapticFeedback.current
+    // Switching a mail server on or off affects everyone on it, so a tap only asks; the knob moves once confirmed.
+    var asking by remember { mutableStateOf<Boolean?>(null) }
+    // Confirm and Reject mark transitions only, so opening a screen on a running or failed server stays silent.
+    var last by remember { mutableStateOf(power) }
+    LaunchedEffect(power) {
+        if (power == PowerPhase.On && last == PowerPhase.Starting) haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+        if (power == PowerPhase.Failed && last != PowerPhase.Failed) haptics.performHapticFeedback(HapticFeedbackType.Reject)
+        last = power
+    }
+    val spinning = power.busy || working
+    val state = when (power) { PowerPhase.On -> "On"; PowerPhase.Starting -> "Starting"; PowerPhase.Stopping -> "Stopping"; else -> "Off" }
+    Row(Modifier.fillMaxWidth()
+        .toggleable(power.on, enabled = enabled && !spinning, role = Role.Switch) {
+            haptics.performHapticFeedback(HapticFeedbackType.ContextClick); asking = it
+        }
+        .semantics { stateDescription = state; liveRegion = LiveRegionMode.Polite }
+        .heightIn(min = 76.dp).padding(start = 14.dp, end = 14.dp, top = 14.dp, bottom = 14.dp)
+        .graphicsLayer { alpha = if (enabled) 1f else 0.45f },
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        val mark = when (power) { PowerPhase.On -> Tint.Green; PowerPhase.Failed -> Tint.Red; else -> Tint.Gray }
+        Crossfade(mark, animationSpec = tween(220), label = "Power mark") { tint ->
+            TintIcon(tint, if (tint == Tint.Red) Icons.Rounded.ErrorOutline else Icons.Rounded.PowerSettingsNew)
+        }
+        AnimatedContent(title to detail, Modifier.weight(1f), transitionSpec = {
+            (fadeIn(tween(220, 60)) + slideInVertically(tween(320, 60, Emphasized)) { 12 }) togetherWith fadeOut(tween(100))
+        }, label = "Power state") { (heading, line) ->
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(heading, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
+                    color = if (power == PowerPhase.Failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
+                line?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            }
+        }
+        PowerSwitch(power, spinning)
+    }
+    asking?.let { on ->
+        val question = if (on) confirm.on else confirm.off
+        KitDialog(question.title, question.text, question.action, onDismiss = { asking = null }, onConfirm = {
+            asking = null
+            haptics.performHapticFeedback(if (on) HapticFeedbackType.ToggleOn else HapticFeedbackType.ToggleOff); onToggle(on)
+        })
     }
 }
+
+/** A switch a size up from the platform's, with a power glyph in the knob that turns into progress while it waits. */
+@Composable
+private fun PowerSwitch(power: PowerPhase, spinning: Boolean) {
+    val off = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.14f)
+    val track by animateColorAsState(when (power) { PowerPhase.On -> Success; PowerPhase.Starting -> Success.copy(alpha = 0.55f); else -> off },
+        tween(280, easing = Emphasized), label = "Power track")
+    val glyph by animateColorAsState(if (power == PowerPhase.On) Success else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+        tween(280, easing = Emphasized), label = "Power glyph")
+    val knob by animateDpAsState(if (power.on) KnobTravel else KnobInset, tween(280, easing = Emphasized), label = "Power knob")
+    Box(Modifier.size(TrackWidth, TrackHeight).clip(CircleShape).background(track)) {
+        Box(Modifier.offset(x = knob).align(Alignment.CenterStart).size(KnobSize).shadow(2.dp, CircleShape).clip(CircleShape).background(Color.White),
+            contentAlignment = Alignment.Center) {
+            Crossfade(spinning, animationSpec = tween(180), label = "Power knob content") { busy ->
+                if (busy) CircularProgressIndicator(Modifier.size(16.dp), color = if (power == PowerPhase.Stopping) glyph else Success, strokeWidth = 2.dp)
+                else Icon(Icons.Rounded.PowerSettingsNew, null, Modifier.size(16.dp), tint = glyph)
+            }
+        }
+    }
+}
+
+private val TrackWidth = 60.dp
+private val TrackHeight = 36.dp
+private val KnobSize = 30.dp
+private val KnobInset = 3.dp
+private val KnobTravel = TrackWidth - KnobSize - KnobInset

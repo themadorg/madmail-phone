@@ -62,7 +62,7 @@ class HostingService : Service() {
     private fun notification(text: String): Notification {
         val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val stop = PendingIntent.getService(this, 1, Intent(this, HostingService::class.java).setAction("stop"), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        return Notification.Builder(this, "hosting").setSmallIcon(android.R.drawable.stat_notify_sync).setContentTitle("Madmail")
+        return Notification.Builder(this, "hosting").setSmallIcon(org.madmail.mobile.R.drawable.ic_stat_madmail).setContentTitle("Madmail")
             .setContentText(text).setContentIntent(open).setOngoing(true).addAction(Notification.Action.Builder(null, "Stop", stop).build()).build()
     }
     override fun onDestroy() {

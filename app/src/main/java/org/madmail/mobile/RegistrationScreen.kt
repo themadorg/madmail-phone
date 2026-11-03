@@ -45,7 +45,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.FileProvider
@@ -80,6 +79,7 @@ internal fun RegistrationScreen(serverId: String, serverName: String, remote: Re
     val context = LocalContext.current
     val colors = MaterialTheme.colorScheme
     val scope = rememberCoroutineScope()
+    val toaster = LocalToaster.current
     val phone = remote == null
     val local = remember { LocalEngine.get(context) }
     val localState by local.state.collectAsState()
@@ -100,7 +100,6 @@ internal fun RegistrationScreen(serverId: String, serverName: String, remote: Re
     var revoking by remember { mutableStateOf(false) }
     val busy = revoking || creationState.busy
     var error by remember { mutableStateOf<String?>(null) }
-    var notice by remember { mutableStateOf<String?>(null) }
     var create by remember { mutableStateOf(false) }
     var manage by remember { mutableStateOf(false) }
     var editAddress by remember { mutableStateOf(false) }
@@ -113,7 +112,7 @@ internal fun RegistrationScreen(serverId: String, serverName: String, remote: Re
     }
     fun select(value: String) { code = value; onEndpointChange(value) }
     LaunchedEffect(creationState.code) {
-        creationState.code?.let { rotation.stop(); select(it); creation.consume(); create = false; refresh++; notice = "Invitation created." }
+        creationState.code?.let { rotation.stop(); select(it); creation.consume(); create = false; refresh++; toaster.show("Invitation created.") }
     }
     LaunchedEffect(copied) { if (copied) { delay(1800); copied = false } }
     // A new account QR every few seconds, only while the code is in view: page on screen, no sheet over it, app in front, server ready.
@@ -158,7 +157,7 @@ internal fun RegistrationScreen(serverId: String, serverName: String, remote: Re
                             style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant, textAlign = TextAlign.Center)
                         Spacer(Modifier.height(12.dp))
                         Box(Modifier.widthIn(max = 280.dp).fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(18.dp)).background(Color.White)
-                            .clickable(onClickLabel = "Enlarge QR code", role = Role.Button) { large = true }) {
+                            .clickable(onClickLabel = "Enlarge QR code", role = Role.Button, onClick = rememberTap { large = true })) {
                             // A short crossfade so each new code reads as a refresh, not a flicker.
                             Crossfade(bitmap, animationSpec = tween(180), label = "qr") { image ->
                                 Image(image.asImageBitmap(), "${if (personal) "Account" else "Invitation"} QR code for $serverName. Tap to enlarge.", Modifier.fillMaxSize().padding(12.dp))
@@ -192,13 +191,13 @@ internal fun RegistrationScreen(serverId: String, serverName: String, remote: Re
                         ActionRow("Open in Delta Chat", onClick = {
                             handOut()
                             runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(shown))) }
-                                .onFailure { error = "Install Delta Chat, or scan on another device." }
+                                .onFailure { toaster.show("Install Delta Chat, or scan on another device.", error = true) }
                         }, icon = Icons.AutoMirrored.Rounded.OpenInNew)
                         RowDivider(48.dp)
                     }
                     ActionRow("Enlarge", onClick = { large = true }, icon = Icons.Rounded.Fullscreen)
                     RowDivider(48.dp)
-                    ActionRow("Share QR image", onClick = { handOut(); runCatching { shareInvitationImage(context, bitmap) }.onFailure { error = "Couldn’t share the QR image." } }, icon = Icons.Rounded.Image)
+                    ActionRow("Share QR image", onClick = { handOut(); runCatching { shareInvitationImage(context, bitmap) }.onFailure { toaster.show("Couldn’t share the QR image.", error = true) } }, icon = Icons.Rounded.Image)
                     RowDivider(48.dp)
                     ActionRow(if (personal) "Stop" else "Hide", onClick = { if (personal) rotation.stop() else select("") }, icon = Icons.Rounded.VisibilityOff)
                 }
@@ -211,20 +210,14 @@ internal fun RegistrationScreen(serverId: String, serverName: String, remote: Re
                 }
             }
         } else {
-            val title = if (!ready) "Server offline" else "Invite someone"
-            val body = if (!ready) if (phone) "Start hosting from Overview." else "Connect from Overview." else if (shown.isNotBlank()) "This invitation is unavailable. Choose or create another." else "Share a link or an account QR."
-            Column(Modifier.fillMaxWidth().padding(horizontal = 4.dp)) {
-                TintIcon(Tint.Purple, Icons.Rounded.QrCode2, size = 56.dp)
-                Spacer(Modifier.height(18.dp))
-                Text(title, Modifier.semantics { heading() }, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.3).sp)
-                Spacer(Modifier.height(8.dp))
-                Text(body, style = MaterialTheme.typography.bodyLarge, color = colors.onSurfaceVariant)
-            }
+            // The page title already names the page; only a line that tells the user something stays above the content.
+            val body = if (!ready) if (phone) "Start hosting from Overview." else "Connect from Overview." else if (shown.isNotBlank()) "This invitation is unavailable. Choose or create another." else null
+            body?.let { Text(it, Modifier.padding(horizontal = 4.dp), style = MaterialTheme.typography.bodyLarge, color = colors.onSurfaceVariant) }
         }
         Column {
             Caption("Guest address")
             Group {
-                Box(Modifier.fillMaxWidth().clickable(enabled = !busy, role = Role.Button, onClickLabel = "Edit guest address") { editAddress = true }) {
+                Box(Modifier.fillMaxWidth().clickable(enabled = !busy, role = Role.Button, onClickLabel = "Edit guest address", onClick = rememberTap { editAddress = true })) {
                     InfoRow(Tint.Teal, Icons.Rounded.Link, "Address", origin.ifBlank { "Choose an address" }) {
                         Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) { Icon(Icons.Rounded.Edit, null, Modifier.size(20.dp), tint = colors.onSurfaceVariant) }
                     }
@@ -235,7 +228,7 @@ internal fun RegistrationScreen(serverId: String, serverName: String, remote: Re
         Column {
             if (!personal) {
                 PillButton("Show account QR", onClick = {
-                    error = null; notice = null
+                    error = null
                     prefs.edit().putString("origin", origin).apply()
                     select(""); rotation.start(origin)
                 }, icon = Icons.Rounded.QrCode2, filled = canCreate, enabled = canCreate, wide = true)
@@ -250,7 +243,6 @@ internal fun RegistrationScreen(serverId: String, serverName: String, remote: Re
                     enabled = ready) { manage = true }
             }
             if (busy) InviteProgress()
-            notice?.let { InviteStatus(Tint.Green, Icons.Rounded.Check, it) }
             error?.let { InviteStatus(Tint.Red, Icons.Rounded.PriorityHigh, it) }
             creationState.error?.let { InviteStatus(Tint.Red, Icons.Rounded.PriorityHigh, it) }
             if (bitmap != null) rotationState.error?.let { InviteStatus(Tint.Orange, Icons.Rounded.PriorityHigh, it) }
@@ -259,14 +251,14 @@ internal fun RegistrationScreen(serverId: String, serverName: String, remote: Re
     if (editAddress) GuestAddressSheet(origin, remote, onDismiss = { editAddress = false }) { updated ->
         origin = updated; prefs.edit().putString("origin", origin).apply()
         if (personal) rotation.retarget(updated) else select(selected?.let { InviteLinks.invite(updated, it.token) }.orEmpty())
-        editAddress = false; notice = "Address updated."
+        editAddress = false; toaster.show("Address updated.")
         // New accounts take this IP as their domain, so the phone server restarts onto it when it changed.
         val host = java.net.URI(updated).host
         if (phone && GuestAddresses.ipv4(host)) scope.launch(Dispatchers.IO) {
             val before = local.mailHost
             runCatching { local.useMailHost(host) }
                 .onSuccess { switched -> if (!switched) error = "Couldn’t switch to $host. Check this phone’s network."
-                    else if (before != host && local.mailHost == host) notice = "Hosting restarted on $host." }
+                    else if (before != host && local.mailHost == host) toaster.show("Hosting restarted on $host.") }
                 .onFailure { error = it.message ?: "Couldn’t restart hosting. Start it from Overview." }
         }
     }
@@ -316,7 +308,7 @@ internal fun RegistrationScreen(serverId: String, serverName: String, remote: Re
                 }
                 Spacer(Modifier.height(20.dp))
                 BrandButton(if (account) "Create account QR" else "Create invite link", enabled = !busy && !creationState.uncertain && (account || (uses.toIntOrNull() ?: 0) in 1..999999)) {
-                    error = null; notice = null
+                    error = null
                     prefs.edit().putString("origin", origin).apply()
                     if (account) { select(""); rotation.start(origin, title, expiry); create = false }
                     else creation.create(origin, false, uses.toIntOrNull() ?: 1, title, expiry)
@@ -340,11 +332,11 @@ internal fun RegistrationScreen(serverId: String, serverName: String, remote: Re
             if (creationState.uncertain && loaded) PillButton("I’ve checked", onClick = { creation.reviewed() }, wide = true)
             if (invitations.isNotEmpty()) Group {
                 invitations.forEachIndexed { index, invitation ->
-                    if (index > 0) RowDivider(60.dp)
+                    if (index > 0) RowDivider(64.dp)
                     Row(Modifier.fillMaxWidth().padding(end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Row(Modifier.weight(1f).clickable(enabled = invitation.active && InviteLinks.origin(origin) != null && !busy, onClickLabel = "Show invitation QR") {
+                        Row(Modifier.weight(1f).clickable(enabled = invitation.active && InviteLinks.origin(origin) != null && !busy, onClickLabel = "Show invitation QR", onClick = rememberTap {
                                 rotation.stop(); select(InviteLinks.invite(origin, invitation.token)); manage = false
-                            }.heightIn(min = 60.dp).padding(start = 14.dp, top = 12.dp, bottom = 12.dp, end = 8.dp),
+                            }).heightIn(min = 60.dp).padding(start = 14.dp, top = 12.dp, bottom = 12.dp, end = 8.dp),
                             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                             TintIcon(if (invitation.active) Tint.Purple else Tint.Gray, Icons.Rounded.ConfirmationNumber)
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -368,7 +360,7 @@ internal fun RegistrationScreen(serverId: String, serverName: String, remote: Re
                 try {
                     request("DELETE", JSONObject().put("token", invitation.token))
                     if (selected?.token == invitation.token) select("")
-                    notice = "Invitation revoked."; revoke = null; refresh++
+                    toaster.show("Invitation revoked."); revoke = null; refresh++
                 } catch (e: CancellationException) { throw e }
                 catch (_: Exception) { error = "Revoke not confirmed. Refresh to check."; revoke = null; refresh++ }
                 finally { revoking = false }

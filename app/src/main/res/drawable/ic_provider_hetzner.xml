@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Hetzner mark from Simple Icons (CC0). Drawn white on the brand colour by ProviderMark. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M4.602 4.025 h2.244 c.509 0 .716 .215 .716 .717 v5.64 h8.883 v-5.64 c0 -.509 .215 -.717 .717 -.717 h2.229 c.5 0 .71 .23 .724 .717 v14.516 c0 .509 -.215 .717 -.717 .717 h-2.23 c-.51 0 -.717 -.215 -.717 -.717 v-5.735 H7.562 v5.735 c0 .516 -.215 .717 -.716 .717 H4.602 c-.51 0 -.717 -.208 -.717 -.717 V4.742 c0 -.509 .207 -.717 .717 -.717 z" />
+</vector>

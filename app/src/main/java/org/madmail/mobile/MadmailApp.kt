@@ -2,13 +2,24 @@ package org.madmail.mobile
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.QrCode2
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -32,7 +43,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import dev.chrisbanes.haze.*
 
@@ -45,6 +59,7 @@ internal fun MadmailApp() {
     var chooseServer by rememberSaveable { mutableStateOf(false) }
     var setup by rememberSaveable { mutableStateOf(false) }
     var phoneSetup by rememberSaveable { mutableStateOf(false) }
+    var debug by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val profiles = remember { ServerProfiles(context) }
@@ -61,6 +76,11 @@ internal fun MadmailApp() {
     val selectServer: (String) -> Unit = { selectedId = it; profiles.select(it) }
 
     val haze = remember { HazeState() }
+    val localState by org.madmail.mobile.engine.LocalEngine.get(context).state.collectAsState()
+    val remoteState = remote?.let { key(it.id) { org.madmail.mobile.engine.RemoteEngine.get(context, it).state.collectAsState().value } }
+    val power = if (remoteState == null) localState.phase.power() else when {
+        remoteState.status.startsWith("Running") -> PowerPhase.On; remoteState.error != null -> PowerPhase.Failed; else -> PowerPhase.Off
+    }
 
     val colors = MaterialTheme.colorScheme
     BackHandler(selectedId.isNotBlank() && page != 0 && !setup && !chooseServer) { page = 0; openHostingPreferences = false }
@@ -105,10 +125,8 @@ internal fun MadmailApp() {
                     Column(Modifier.fillMaxSize().statusBarsPadding().hazeSource(haze).verticalScroll(displayedScroll)
                         .padding(horizontal = GroupGutter).padding(top = 28.dp, bottom = 140.dp),
                         verticalArrangement = Arrangement.spacedBy(24.dp)) {
-                        if (displayedPage == 1) PageTitle("Invite", trailing = {
-                            Text(displayedName, Modifier.widthIn(max = 160.dp).padding(start = 12.dp), style = MaterialTheme.typography.titleMedium,
-                                color = colors.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        })
+                        // Same shape as Settings: the page is the title, the server rides under it.
+                        if (displayedPage == 1) PageTitle("Invite", displayedName)
                         key(displayedId) {
                         // Finish cleaning up account QRs from earlier sessions without waiting for a visit to Invite.
                         LaunchedEffect(Unit) { org.madmail.mobile.engine.AccountQrRotation.get(context, displayedId, displayedRemote).tidy() }
@@ -144,7 +162,7 @@ internal fun MadmailApp() {
                         }
                     }
                 }
-                GlassDock(haze, page, chooseServer, identity.mark, remote == null, { openHostingPreferences = false; page = it }, { chooseServer = true }, { setup = true }, Modifier.align(Alignment.BottomCenter))
+                GlassDock(haze, page, identity.name.ifBlank { remote?.host ?: "This phone" }, identity.mark, remote == null, power, { openHostingPreferences = false; page = it }, { chooseServer = true }, { debug = true }, Modifier.align(Alignment.BottomCenter))
             }
         }
     }
@@ -154,36 +172,83 @@ internal fun MadmailApp() {
             identities = identities + (id to updated)
         }, onEditing = { editingServer = it })
     }
+    if (debug) KitSheet(onDismiss = { debug = false }) { DebugMenu(serverId, remote) }
 }
 
+/** The tab bar: three labelled tabs under one sliding lozenge, and the current server beside them with its live state. */
 @Composable
-private fun GlassDock(haze: HazeState, page: Int, choosingServer: Boolean, serverMark: String, phone: Boolean, onSelect: (Int) -> Unit, onServers: () -> Unit, onAdd: () -> Unit, modifier: Modifier) {
+private fun GlassDock(haze: HazeState, page: Int, serverName: String, serverMark: String, phone: Boolean, power: PowerPhase, onSelect: (Int) -> Unit,
+    onServers: () -> Unit, onDebug: () -> Unit, modifier: Modifier) {
     val colors = MaterialTheme.colorScheme
     val dark = isSystemInDarkTheme()
-    val shape = RoundedCornerShape(36.dp)
+    val haptics = LocalHapticFeedback.current
     val glass = HazeStyle(backgroundColor = colors.surface, tint = HazeTint(colors.surface.copy(alpha = .78f)), blurRadius = 24.dp, noiseFactor = .015f, fallbackTint = HazeTint(colors.surface.copy(alpha = .97f)))
     val edge = Brush.verticalGradient(listOf(Color.White.copy(alpha = if (dark) .30f else .85f), colors.outline.copy(alpha = .12f)))
-    Row(modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(Modifier.weight(1f).clip(shape).hazeEffect(haze, glass).border(1.dp, edge, shape).padding(6.dp).selectableGroup(), verticalAlignment = Alignment.CenterVertically) {
-            val icons = listOf(Icons.Rounded.Home, Icons.Rounded.QrCode2, Icons.Rounded.Settings)
-            listOf("Overview", "Invite", "Settings", "Server").forEachIndexed { index, label ->
-                val selected = if (index == 3) choosingServer else page == index
-                val fill by animateColorAsState(if (selected) colors.primary.copy(alpha = .12f) else Color.Transparent, tween(260, easing = Emphasized), label = "Dock selection")
-                val tint by animateColorAsState(if (selected) colors.primary else colors.onSurfaceVariant, tween(260, easing = Emphasized), label = "Dock icon")
-                Row(Modifier.weight(1f).height(48.dp).clip(RoundedCornerShape(24.dp)).background(fill)
-                    .selectable(selected, role = if (index == 3) Role.Button else Role.Tab, onClick = { if (index == 3) onServers() else onSelect(index) }),
-                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-                    if (index == 3) {
-                        Box(Modifier.semantics { contentDescription = "Switch server" }) { ServerMark(serverMark, phone, compact = true) }
-                        Spacer(Modifier.width(3.dp))
-                        Icon(if (choosingServer) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore, null, Modifier.size(16.dp), tint = tint)
-                    } else Icon(icons[index], label, Modifier.size(24.dp), tint = tint)
+    Row(modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        BoxWithConstraints(Modifier.weight(1f).height(DockHeight).clip(CircleShape).hazeEffect(haze, glass).border(1.dp, edge, CircleShape).padding(5.dp)) {
+            val tab = maxWidth / DockTabs.size
+            // One lozenge travels between tabs, so a tab change reads as movement instead of two fades.
+            val slide by animateDpAsState(tab * page, spring(dampingRatio = 0.78f, stiffness = 420f), label = "Dock indicator")
+            Box(Modifier.offset { IntOffset(slide.roundToPx(), 0) }.width(tab).fillMaxHeight().clip(CircleShape).background(colors.onSurface.copy(alpha = if (dark) .12f else .07f)))
+            Row(Modifier.fillMaxSize().selectableGroup()) {
+                DockTabs.forEachIndexed { index, item ->
+                    // Changing tab ticks like a segmented control; tapping the current tab only gives the plain tap.
+                    DockTab(item, page == index, rememberTap { if (index != page) haptics.performHapticFeedback(HapticFeedbackType.SegmentTick); onSelect(index) },
+                        // Long-pressing Home opens the debug sheet for testers; it is not announced as a feature anywhere else.
+                        onLongClick = if (index == 0) ({ haptics.performHapticFeedback(HapticFeedbackType.LongPress); onDebug() }) else null)
                 }
             }
         }
-        Box(Modifier.size(52.dp).clip(CircleShape).hazeEffect(haze, glass).border(1.dp, edge, CircleShape)
-            .clickable(role = Role.Button, onClickLabel = "Set up a server", onClick = onAdd), contentAlignment = Alignment.Center) {
-            Icon(Icons.Rounded.Add, "Set up a server", Modifier.size(28.dp), tint = brandRed())
+        DockServer(haze, glass, edge, serverName, serverMark, phone, power, onServers)
+    }
+}
+
+private class DockItem(val label: String, val active: ImageVector, val idle: ImageVector)
+private val DockTabs = listOf(DockItem("Home", Icons.Rounded.Home, Icons.Outlined.Home), DockItem("Invite", Icons.Rounded.QrCode2, Icons.Outlined.QrCode2),
+    DockItem("Settings", Icons.Rounded.Settings, Icons.Outlined.Settings))
+private val DockHeight = 64.dp
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun RowScope.DockTab(item: DockItem, active: Boolean, onClick: () -> Unit, onLongClick: (() -> Unit)?) {
+    val colors = MaterialTheme.colorScheme
+    val tint by animateColorAsState(if (active) colors.primary else colors.onSurfaceVariant, tween(220, easing = Emphasized), label = "Dock tint")
+    // The icon dips and springs back when its tab is chosen, but not when the dock first appears.
+    val pop = remember { Animatable(1f) }
+    var settled by remember { mutableStateOf(false) }
+    LaunchedEffect(active) {
+        if (active && settled) { pop.snapTo(0.8f); pop.animateTo(1f, spring(dampingRatio = 0.45f, stiffness = 520f)) }
+        settled = true
+    }
+    // The sliding lozenge is the selection feedback, so taps skip the ripple and only press in.
+    val source = remember { MutableInteractionSource() }
+    val press = if (onLongClick != null) Modifier.combinedClickable(source, null, role = Role.Tab, onLongClickLabel = "Debug menu", hapticFeedbackEnabled = false,
+        onLongClick = onLongClick, onClick = onClick)
+    else Modifier.clickable(source, null, role = Role.Tab, onClick = onClick)
+    Column(Modifier.weight(1f).fillMaxHeight().pressScale(source, 0.92f).clip(CircleShape).semantics(mergeDescendants = true) { selected = active }.then(press),
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically)) {
+        Icon(if (active) item.active else item.idle, null, Modifier.size(24.dp).graphicsLayer { scaleX = pop.value; scaleY = pop.value }, tint = tint)
+        Text(item.label, style = MaterialTheme.typography.labelSmall, fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium, color = tint, maxLines = 1)
+    }
+}
+
+/** The current server's mark, as tall as the tabs. Its dot shows whether the server is up; tapping it switches or adds servers. */
+@Composable
+private fun DockServer(haze: HazeState, glass: HazeStyle, edge: Brush, name: String, mark: String, phone: Boolean, power: PowerPhase, onClick: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    val source = remember { MutableInteractionSource() }
+    val status = when (power) { PowerPhase.On -> "live"; PowerPhase.Starting -> "starting"; PowerPhase.Stopping -> "stopping"; PowerPhase.Failed -> "failed"; PowerPhase.Off -> "off" }
+    val dot by animateColorAsState(when (power) {
+        PowerPhase.On -> Success; PowerPhase.Failed -> colors.error; PowerPhase.Starting, PowerPhase.Stopping -> Success.copy(alpha = .45f); PowerPhase.Off -> colors.outline
+    }, tween(280, easing = Emphasized), label = "Server state")
+    Box(Modifier.size(DockHeight).pressScale(source, 0.92f)) {
+        Box(Modifier.matchParentSize().clip(CircleShape).hazeEffect(haze, glass).border(1.dp, edge, CircleShape)
+            .clickable(source, ripple(), role = Role.Button, onClickLabel = "Switch server", onClick = rememberTap(onClick))
+            .semantics { contentDescription = "$name, $status" }, contentAlignment = Alignment.Center) {
+            ServerMark(mark, phone, size = 38.dp)
         }
+        Box(Modifier.align(Alignment.TopEnd).padding(top = 7.dp, end = 7.dp).size(14.dp).clip(CircleShape).background(colors.surface).padding(2.5.dp)
+            .clip(CircleShape).background(dot))
     }
 }

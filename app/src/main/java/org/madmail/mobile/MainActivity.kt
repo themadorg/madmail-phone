@@ -27,7 +27,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme(colorScheme = madmailColors(isSystemInDarkTheme())) {
                 CompositionLocalProvider(LocalAppLock provides appLock) {
-                    if (appLock.locked) AppLockScreen(appLock) else MadmailApp()
+                    ToastHost { if (appLock.locked) AppLockScreen(appLock) else MadmailApp() }
                 }
             }
         }
@@ -63,7 +63,7 @@ internal fun PhoneHostingSettings(serverId: String) {
             SwitchRow(Tint.Teal, Icons.Rounded.SettingsEthernet, "Standard ports", "Needs root", rootPorts) {
                 rootPorts = it; prefs.edit().putBoolean("root_ports", it).apply()
             }
-            RowDivider(60.dp)
+            RowDivider(64.dp)
             ValueRow("SMTP TLS", mode.smtp.toString())
             RowDivider(16.dp)
             ValueRow("IMAP TLS", mode.imap.toString())

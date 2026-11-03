@@ -99,9 +99,10 @@ internal fun ServerPicker(selectedId: String, remotes: List<RemoteServer>, ident
                             val identity = identities[id] ?: ServerIdentity()
                             ServerRow(identity, id == "phone", identity.name.ifBlank { fallback }, if (editMode) "Name and icon" else address,
                                 selected = id == selectedId, editMode = editMode) { if (editMode) editing = id else onSelect(id) }
-                            RowDivider(60.dp)
+                            // Server rows: 14dp padding, 36dp mark, 14dp gap, so the text starts at 64dp.
+                            RowDivider(64.dp)
                         }
-                        NavRow({ TintIcon(Tint.Red, Icons.Rounded.Add) }, "Set up a server", onClick = onAdd)
+                        NavRow({ TintIcon(Tint.Red, Icons.Rounded.Add) }, "Add server", onClick = onAdd)
                     }
                     if (visible.isEmpty()) Footer("No matches")
                 }
@@ -115,10 +116,10 @@ internal fun ServerPicker(selectedId: String, remotes: List<RemoteServer>, ident
 
 @Composable
 private fun ServerRow(identity: ServerIdentity, phone: Boolean, title: String, detail: String, selected: Boolean, editMode: Boolean, onClick: () -> Unit) {
-    Row(Modifier.fillMaxWidth().selectable(selected = selected && !editMode, role = if (editMode) Role.Button else Role.RadioButton, onClick = onClick)
+    Row(Modifier.fillMaxWidth().selectable(selected = selected && !editMode, role = if (editMode) Role.Button else Role.RadioButton, onClick = rememberTap(onClick))
         .heightIn(min = 60.dp).padding(start = 14.dp, end = if (editMode) 10.dp else 14.dp, top = 12.dp, bottom = 12.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-        ServerMark(identity.mark, phone, size = 32.dp)
+        ServerMark(identity.mark, phone, size = 36.dp)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)

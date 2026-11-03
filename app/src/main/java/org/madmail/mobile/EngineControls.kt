@@ -24,8 +24,7 @@ import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Inventory2
 import androidx.compose.material.icons.rounded.Link
-import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material.icons.rounded.Stop
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -46,7 +45,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.madmail.mobile.engine.*
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun EngineControls() {
     val context = LocalContext.current
@@ -58,22 +56,19 @@ internal fun EngineControls() {
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { start() }
     Column {
         Group(Modifier.animateContentSize(tween(300, easing = Emphasized))) {
-            HostingStatus(state.phase)
-            FlowRow(Modifier.fillMaxWidth().padding(start = 60.dp, end = 14.dp, bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                PillButton(when (state.phase) { EnginePhase.Running -> "Stop hosting"; EnginePhase.Starting -> "Starting…"; EnginePhase.Stopping -> "Stopping…"; else -> "Start hosting" }, onClick = {
-                    if (state.phase == EnginePhase.Running) context.startService(Intent(context, HostingService::class.java).setAction("stop"))
-                    else if (Build.VERSION.SDK_INT >= 33) permission.launch(Manifest.permission.POST_NOTIFICATIONS) else start()
-                }, icon = if (state.phase == EnginePhase.Running) Icons.Rounded.Stop else Icons.Rounded.PlayArrow, filled = state.phase != EnginePhase.Running,
-                    enabled = state.phase != EnginePhase.Starting && state.phase != EnginePhase.Stopping && engine.selected != null)
-                PillButton("Versions", onClick = { versions = true }, icon = Icons.Rounded.Inventory2)
+            HostingStatus(state.phase, enabled = engine.selected != null) { on ->
+                if (!on) context.startService(Intent(context, HostingService::class.java).setAction("stop"))
+                else if (Build.VERSION.SDK_INT >= 33) permission.launch(Manifest.permission.POST_NOTIFICATIONS) else start()
             }
-            RowDivider(60.dp)
+            RowDivider(64.dp)
+            NavRow({ TintIcon(Tint.Gray, Icons.Rounded.Inventory2) }, "Versions", value = state.version ?: engine.selected?.version) { versions = true }
+            RowDivider(64.dp)
             BackgroundHostingAccess(access)
         }
         state.error?.let { Footer(it, MaterialTheme.colorScheme.error) }
         access.error?.let { Footer(it, MaterialTheme.colorScheme.error) }
     }
-    if (versions) EngineVersionsDialog { versions = false }
+    if (versions) EngineVersionsSheet { versions = false }
 }
 
 /** Android's battery exemption for hosting, re-read on every resume so it always shows the real state. */
@@ -107,7 +102,8 @@ internal fun rememberBackgroundAccess(): BackgroundAccess {
 /** Background access as a row inside a group. Errors are the caller's to show under the group. */
 @Composable
 internal fun BackgroundHostingAccess(access: BackgroundAccess = rememberBackgroundAccess()) {
-    Row(Modifier.fillMaxWidth().then(if (access.allowed) Modifier.clickable(role = Role.Button, onClick = access.request) else Modifier).heightIn(min = 60.dp)
+    val tap = rememberTap(access.request)
+    Row(Modifier.fillMaxWidth().then(if (access.allowed) Modifier.clickable(role = Role.Button, onClick = tap) else Modifier).heightIn(min = 60.dp)
         .padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 12.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
         TintIcon(if (access.allowed) Tint.Green else Tint.Orange, if (access.allowed) Icons.Rounded.BatteryFull else Icons.Rounded.BatteryAlert)
@@ -123,8 +119,9 @@ internal fun BackgroundHostingAccess(access: BackgroundAccess = rememberBackgrou
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun EngineVersionsDialog(onDismiss: () -> Unit) {
+private fun EngineVersionsSheet(onDismiss: () -> Unit) {
     val context = LocalContext.current
     val engine = remember { LocalEngine.get(context) }
     val state by engine.state.collectAsState()
@@ -158,22 +155,26 @@ private fun EngineVersionsDialog(onDismiss: () -> Unit) {
     }
     val packageField = remember { FocusRequester() }
     val canInstall = !busy && state.phase in listOf(EnginePhase.Stopped, EnginePhase.Failed)
-    AlertDialog(onDismissRequest = { if (!busy) onDismiss() }, containerColor = panelColor(), shape = RoundedCornerShape(28.dp),
-        title = { Text("Madmail versions", fontWeight = FontWeight.SemiBold) }, text = {
-        Column(Modifier.heightIn(max = 460.dp).verticalScroll(rememberScrollState()).animateContentSize(tween(300, easing = Emphasized))) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("themadorg/madmail", Modifier.weight(1f).padding(start = 16.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                TextButton(onClick = { refresh++ }, enabled = !loading && !busy) { Text("Refresh") }
-            }
+    // A download in flight keeps the sheet open, so its result has somewhere to land.
+    val downloading by rememberUpdatedState(busy)
+    KitSheet(onDismiss = { if (!busy) onDismiss() },
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true, confirmValueChange = { it != SheetValue.Hidden || !downloading })) {
+        SheetHeader("Madmail versions", "themadorg/madmail", trailing = {
+            IconButton(onClick = { refresh++ }, enabled = !loading && !busy) { Icon(Icons.Rounded.Refresh, "Check for new versions") }
+        })
+        Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()).padding(horizontal = GroupGutter).padding(bottom = 24.dp)
+            .animateContentSize(tween(300, easing = Emphasized))) {
             if (loading) EngineProgress()
-            val versions = (engine.versions.map { it.version } + releases.map { it.version }).distinct()
-                .sortedWith { a, b -> compareVersions(b, a) }
+            // Releases with no Android build can't be used here; they're counted below instead of listed.
+            val all = (engine.versions.map { it.version } + releases.map { it.version }).distinct().sortedWith { a, b -> compareVersions(b, a) }
+            val versions = all.filter { version -> engine.versions.any { it.version == version } || releases.find { it.version == version }?.androidPackage != null }
+            val hidden = all.size - versions.size
             if (versions.isNotEmpty()) Group {
                 versions.forEachIndexed { index, version ->
                     val installed = engine.versions.find { it.version == version }
                     val release = releases.find { it.version == version }
                     val androidPackage = release?.androidPackage
-                    if (index > 0) RowDivider(60.dp)
+                    if (index > 0) RowDivider(64.dp)
                     InfoRow(if (selected == version) Tint.Green else Tint.Gray, if (selected == version) Icons.Rounded.CheckCircle else Icons.Rounded.Inventory2, version, when {
                         selected == version -> "In use"
                         installed != null -> "Installed"
@@ -192,6 +193,7 @@ private fun EngineVersionsDialog(onDismiss: () -> Unit) {
             }
             loadError?.let { Footer(it, MaterialTheme.colorScheme.error) }
             if (!loading && loadError == null && releases.isEmpty()) Footer("No releases found.")
+            if (!loading && hidden > 0) Footer("$hidden older ${if (hidden == 1) "release has" else "releases have"} no Android build.")
             if (busy) { Spacer(Modifier.height(12.dp)); EngineProgress(); Footer("Downloading…") }
             stagedVersion?.let { staged ->
                 Spacer(Modifier.height(16.dp))
@@ -211,7 +213,7 @@ private fun EngineVersionsDialog(onDismiss: () -> Unit) {
             }
             if (showPackageLink) Footer("Signed update URL.")
         }
-    }, confirmButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text("Close") } })
+    }
 }
 
 /** A thin rounded progress line, like the storage meter. */

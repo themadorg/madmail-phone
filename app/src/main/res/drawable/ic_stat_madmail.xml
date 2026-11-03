@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Status-bar silhouette of the Madmail logo: angry face over the censored bar. Android tints it, so it is single-colour with cut-outs. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FFFFFFFF" android:fillType="evenOdd" android:pathData="M2.013,12.5 A10,10 0 1,1 21.987,12.5 Z M5.2,7.8 L10.6,10 Q10.4,11.4 8.4,11.4 Q5.6,11.2 5.2,7.8 Z M18.8,7.8 L13.4,10 Q13.6,11.4 15.6,11.4 Q18.4,11.2 18.8,7.8 Z M6,20 A10,10 0 0,0 18,20 Z"/>
+    <path android:fillColor="#FFFFFFFF" android:fillType="evenOdd" android:pathData="M2.2,13.5 L21.8,13.5 Q23,13.5 23,14.7 L23,17.8 Q23,19 21.8,19 L2.2,19 Q1,19 1,17.8 L1,14.7 Q1,13.5 2.2,13.5 Z M6.6,14.5 L7.2,14.5 L7.2,18 L6.6,18 Z M7.8,14.5 L8.4,14.5 L8.4,18 L7.8,18 Z M5.9,15.4 L6.6,15.4 L6.6,16 L5.9,16 Z M7.2,15.4 L7.8,15.4 L7.8,16 L7.2,16 Z M8.4,15.4 L9.1,15.4 L9.1,16 L8.4,16 Z M5.9,16.5 L6.6,16.5 L6.6,17.1 L5.9,17.1 Z M7.2,16.5 L7.8,16.5 L7.8,17.1 L7.2,17.1 Z M8.4,16.5 L9.1,16.5 L9.1,17.1 L8.4,17.1 Z M11.6,14.5 L12.4,14.5 L12.4,16.9 L11.6,16.9 Z M11.6,17.3 L12.4,17.3 L12.4,18 L11.6,18 Z M15.2,18 L17.2,14.5 L17.9,14.5 L15.9,18 Z M15.0,14.5 L15.8,14.5 L15.8,15.3 L15.0,15.3 Z M17.2,17.2 L18.0,17.2 L18.0,18.0 L17.2,18.0 Z"/>
+</vector>

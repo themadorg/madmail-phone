@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- DigitalOcean mark from Simple Icons (CC0). Drawn white on the brand colour by ProviderMark. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M12.04 0 C5.408 -.02 .005 5.37 .005 11.992 h4.638 c0 -4.923 4.882 -8.731 10.064 -6.855 a6.95 6.95 0 0 1 4.147 4.148 c1.889 5.177 -1.924 10.055 -6.84 10.064 v-4.61 H7.391 v4.623 h4.61 V24 c7.86 0 13.967 -7.588 11.397 -15.83 c-1.115 -3.59 -3.985 -6.446 -7.575 -7.575 A12.8 12.8 0 0 0 12.039 0 z M7.39 19.362 H3.828 v3.564 H7.39 z m-3.563 0 v-2.978 H.85 v2.978 z" />
+</vector>

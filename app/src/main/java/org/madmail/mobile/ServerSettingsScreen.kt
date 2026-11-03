@@ -4,11 +4,12 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.text.format.Formatter
-import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -33,7 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
@@ -41,7 +42,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import org.json.JSONObject
+import org.json.JSONObject import kotlin.math.ceil
 import org.madmail.mobile.core.*
 import org.madmail.mobile.engine.*
 import java.text.NumberFormat
@@ -71,6 +72,7 @@ internal fun ServerSettingsScreen(serverId: String, serverName: String, remote: 
     val colors = MaterialTheme.colorScheme
     val controller = remember(serverId) { SettingsController.get(context, serverId, remote) }
     val state by controller.state.collectAsState()
+    val toaster = LocalToaster.current
     val local by LocalEngine.get(context).state.collectAsState()
     val remoteState = remote?.let { RemoteEngine.get(context, it).state.collectAsState().value }
     val ready = if (remote == null) local.phase == EnginePhase.Running else remoteState?.connected == true && remoteState.status.startsWith("Running")
@@ -82,12 +84,19 @@ internal fun ServerSettingsScreen(serverId: String, serverName: String, remote: 
     var deleteAccount by remember { mutableStateOf(false) }
     var quotaTarget by remember { mutableStateOf<String?>(null) }
     var quotaInitial by remember { mutableLongStateOf(0L) }
-    val enabled = ready && !state.busy && !state.stale && state.values != null
+    // A refresh leaves rows as they are; the controller queues edits behind it, so nothing dims or jumps while it runs.
+    val enabled = ready && !state.stale && state.values != null
     val canRestart = ready && !state.busy && (remote == null || remoteState?.managed == true)
     fun navigate(next: String) { page = next; onNavigate() }
     fun back() { navigate(if (page == "account") "accounts" else "root") }
     BackHandler(page != "root") { back() }
     LaunchedEffect(ready) { if (ready) controller.refresh() }
+    // Confirmations float as toasts. The controller keeps its last message, so one already set when the page opens isn't repeated;
+    // collecting the flow (not recomposition) catches the brief null between two identical "Saved." messages.
+    LaunchedEffect(controller) {
+        var seen = controller.state.value.message
+        controller.state.collect { current -> if (current.message != seen) { seen = current.message; current.message?.let { toaster.show(it) } } }
+    }
     LaunchedEffect(page, ready) { if (ready && page in listOf("accounts", "federation")) controller.loadDetails(page) }
     val title = settingsPages.find { it.id == page }?.title ?: if (page == "account") "Account" else "Settings"
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(24.dp)) {
@@ -97,22 +106,20 @@ internal fun ServerSettingsScreen(serverId: String, serverName: String, remote: 
                 IconButton(onClick = { back() }, Modifier.offset(x = (-8).dp)) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back to settings") }
             }
             PageTitle(title, serverName) {
-                IconButton(onClick = { controller.refresh(); if (page in listOf("accounts", "federation")) controller.loadDetails(page) }, enabled = ready && !state.busy,
+                IconButton(onClick = { if (!state.busy) { controller.refresh(); if (page in listOf("accounts", "federation")) controller.loadDetails(page) } }, enabled = ready,
                     colors = IconButtonDefaults.iconButtonColors(containerColor = groupColor(), contentColor = colors.onSurfaceVariant,
                         disabledContainerColor = groupColor(), disabledContentColor = colors.onSurfaceVariant.copy(alpha = 0.38f))) {
-                    Icon(Icons.Rounded.Refresh, "Refresh settings", Modifier.size(22.dp))
+                    RefreshGlyph(state.busy)
                 }
             }
         }
-        val notices = state.busy || !ready || state.error != null || state.message != null || state.restartRequired
+        val notices = !ready || state.error != null || state.restartRequired
         if (notices) Column(Modifier.animateContentSize(tween(300, easing = Emphasized)), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 4.dp).clip(CircleShape), strokeCap = StrokeCap.Round)
             if (!ready) Group {
                 InfoRow(Tint.Gray, Icons.Rounded.PowerSettingsNew, if (remote == null) "Hosting is off" else "Not connected",
                     if (remote == null) "Start hosting in Overview." else "Connect in Overview.")
             }
             state.error?.let { Group { InfoRow(Tint.Red, Icons.Rounded.ErrorOutline, "Something went wrong", it) } }
-            state.message?.let { Group { InfoRow(Tint.Green, Icons.Rounded.Check, it) } }
             if (state.restartRequired) Group {
                 InfoRow(Tint.Orange, Icons.Rounded.RestartAlt, "Restart needed") {
                     PillButton("Restart", onClick = { restart = true }, enabled = canRestart)
@@ -128,7 +135,7 @@ internal fun ServerSettingsScreen(serverId: String, serverName: String, remote: 
                         settingsSections.forEach { (caption, ids) ->
                             Section(caption) {
                                 settingsPages.filter { it.id in ids }.forEachIndexed { index, item ->
-                                    if (index > 0) RowDivider(60.dp)
+                                    if (index > 0) RowDivider(64.dp)
                                     NavRow({ TintIcon(item.tint, item.icon) }, item.title, item.subtitle) { navigate(item.id) }
                                 }
                             }
@@ -145,12 +152,12 @@ internal fun ServerSettingsScreen(serverId: String, serverName: String, remote: 
                                 ValueRow("Address", endpoint ?: "Not configured", copyable = endpoint != null, mark = { TintIcon(Tint.Teal, Icons.Rounded.Api) })
                             } else Section("SSH") {
                                 ValueRow("Host", remote.host, copyable = true, mark = { TintIcon(Tint.Blue, Icons.Rounded.Dns) })
-                                RowDivider(60.dp)
+                                RowDivider(64.dp)
                                 ValueRow("Username", remote.user, copyable = true, mark = { TintIcon(Tint.Orange, Icons.Rounded.Person) })
-                                RowDivider(60.dp)
+                                RowDivider(64.dp)
                                 ValueRow("Port", remote.port.toString(), copyable = true, mark = { TintIcon(Tint.Teal, Icons.Rounded.SettingsEthernet) })
                                 RemoteEngine.get(context, remote).fingerprint?.let {
-                                    RowDivider(60.dp)
+                                    RowDivider(64.dp)
                                     ValueRow("Fingerprint", it, copyable = true, mark = { TintIcon(Tint.Graphite, Icons.Rounded.Fingerprint) })
                                 }
                             }
@@ -161,9 +168,9 @@ internal fun ServerSettingsScreen(serverId: String, serverName: String, remote: 
                         } else {
                             Section("Hosting ports") {
                                 ValueRow("SMTP TLS", "11465", copyable = true, mark = { TintIcon(Tint.Teal, Icons.Rounded.Upload) })
-                                RowDivider(60.dp)
+                                RowDivider(64.dp)
                                 ValueRow("IMAP TLS", "11993", copyable = true, mark = { TintIcon(Tint.Teal, Icons.Rounded.Download) })
-                                RowDivider(60.dp)
+                                RowDivider(64.dp)
                                 ValueRow("HTTPS", "18443", copyable = true, mark = { TintIcon(Tint.Teal, Icons.Rounded.Lock) })
                             }
                             val prefs = remember { context.getSharedPreferences("server-settings-phone", Context.MODE_PRIVATE) }
@@ -192,7 +199,7 @@ internal fun ServerSettingsScreen(serverId: String, serverName: String, remote: 
                                     .takeIf { (0 until rows.length()).any { rows.getJSONObject(it).optString("username").endsWith("@madmail.local", ignoreCase = true) } }) {
                                 for (i in 0 until rows.length()) {
                                     val row = rows.getJSONObject(i)
-                                    if (i > 0) RowDivider(60.dp)
+                                    if (i > 0) RowDivider(64.dp)
                                     NavRow({ TintIcon(Tint.Orange, Icons.Rounded.Person) }, row.getString("username"),
                                         "${Formatter.formatFileSize(context, row.optLong("used_bytes"))} used · ${Formatter.formatFileSize(context, row.optLong("max_bytes"))} quota") {
                                         account = row; navigate("account")
@@ -206,9 +213,9 @@ internal fun ServerSettingsScreen(serverId: String, serverName: String, remote: 
                         val updated = state.accounts?.optJSONArray("accounts")?.let { array -> (0 until array.length()).map { array.getJSONObject(it) }.find { it.optString("username") == username } } ?: row
                         Section("Account") {
                             ValueRow("Address", username, copyable = true, mark = { TintIcon(Tint.Blue, Icons.Rounded.AlternateEmail) })
-                            RowDivider(60.dp)
+                            RowDivider(64.dp)
                             ValueRow("Storage used", Formatter.formatFileSize(context, updated.optLong("used_bytes")), mark = { TintIcon(Tint.Yellow, Icons.Rounded.Storage) })
-                            RowDivider(60.dp)
+                            RowDivider(64.dp)
                             NavRow({ TintIcon(Tint.Yellow, Icons.Rounded.DataUsage) }, "Storage quota", value = Formatter.formatFileSize(context, updated.optLong("max_bytes")), enabled = enabled) {
                                 quotaTarget = username; quotaInitial = updated.optLong("max_bytes")
                             }
@@ -236,12 +243,12 @@ internal fun ServerSettingsScreen(serverId: String, serverName: String, remote: 
                                     else -> setting.display(current)
                                 }
                                 val (tint, icon) = settingMark(setting)
-                                if (index > 0) RowDivider(60.dp)
+                                if (index > 0) RowDivider(64.dp)
                                 if (setting.kind == SettingKind.Toggle) {
                                     if (checked != null) SwitchRow(tint, icon, setting.title, setting.hint.ifBlank { null }, checked, enabled) { controller.save(setting, it.toString()) }
                                     else InfoRow(tint, icon, setting.title, listOf(setting.hint, display).filter { it.isNotBlank() }.joinToString("\n"))
                                 } else SettingRow(tint, icon, setting.title, display, clickable = enabled && current != null, editable = setting.kind != SettingKind.Managed,
-                                    copy = if (!current.isNullOrBlank() && setting.kind != SettingKind.Secret) ({ copySetting(context, setting.title, current) }) else null) { editing = setting }
+                                    copy = if (!current.isNullOrBlank() && setting.kind != SettingKind.Secret) ({ copySetting(context, toaster, setting.title, current) }) else null) { editing = setting }
                             }
                         }
                         if (displayedPage == "federation" && ready) state.dkim?.let { dkim ->
@@ -250,7 +257,7 @@ internal fun ServerSettingsScreen(serverId: String, serverName: String, remote: 
                                 .mapNotNull { (key, label, mark) -> dkim.optString(key).takeUnless { it.isBlank() || it == "null" }?.let { Triple(label, it, mark) } }
                             if (rows.isNotEmpty()) Section("Domain signing") {
                                 rows.forEachIndexed { index, (label, value, mark) ->
-                                    if (index > 0) RowDivider(60.dp)
+                                    if (index > 0) RowDivider(64.dp)
                                     ValueRow(label, value, copyable = true, mark = { TintIcon(mark.first, mark.second) })
                                 }
                             }
@@ -310,7 +317,7 @@ private fun Section(caption: String? = null, footer: String? = null, content: @C
 @Composable
 private fun SettingRow(tint: Tint, icon: ImageVector, title: String, value: String, clickable: Boolean, editable: Boolean, copy: (() -> Unit)?, onClick: () -> Unit) {
     val colors = MaterialTheme.colorScheme
-    Row(Modifier.fillMaxWidth().clickable(enabled = clickable && editable, role = Role.Button, onClick = onClick).heightIn(min = 60.dp)
+    Row(Modifier.fillMaxWidth().clickable(enabled = clickable && editable, role = Role.Button, onClick = rememberTap(onClick)).heightIn(min = 60.dp)
         .padding(start = 14.dp, end = if (editable) 10.dp else if (copy != null) 4.dp else 14.dp, top = 12.dp, bottom = 12.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
         TintIcon(tint, icon)
@@ -323,25 +330,21 @@ private fun SettingRow(tint: Tint, icon: ImageVector, title: String, value: Stri
     }
 }
 
-/** A confirmation in the kit: warm surface, large radius, cancel as text and the action as a pill. */
+/** The refresh arrow turns while a load runs, in place, so the page below never moves. */
 @Composable
-private fun KitDialog(title: String, text: String?, confirm: String, onConfirm: () -> Unit, onDismiss: () -> Unit, confirmEnabled: Boolean = true,
-    content: (@Composable ColumnScope.() -> Unit)? = null) {
-    AlertDialog(onDismissRequest = onDismiss, containerColor = panelColor(), shape = RoundedCornerShape(28.dp),
-        title = { Text(title, fontWeight = FontWeight.SemiBold) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                text?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                content?.let { Column(content = it) }
-            }
-        },
-        confirmButton = { PillButton(confirm, onConfirm, filled = true, enabled = confirmEnabled) },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } })
+private fun RefreshGlyph(busy: Boolean) {
+    val turn = remember { Animatable(0f) }
+    LaunchedEffect(busy) {
+        if (busy) while (true) { turn.animateTo(turn.value + 360f, tween(800, easing = LinearEasing)) }
+        // Finish the current turn instead of snapping back, then reset for the next one.
+        else { turn.animateTo(ceil(turn.value / 360f) * 360f, tween(260, easing = Emphasized)); turn.snapTo(0f) }
+    }
+    Icon(Icons.Rounded.Refresh, if (busy) "Refreshing" else "Refresh settings", Modifier.size(22.dp).graphicsLayer { rotationZ = turn.value })
 }
 
-private fun copySetting(context: Context, title: String, value: String) {
+private fun copySetting(context: Context, toaster: Toaster, title: String, value: String) {
     (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText(title, value))
-    Toast.makeText(context, "$title copied", Toast.LENGTH_SHORT).show()
+    toaster.show("$title copied")
 }
 
 /** Hue follows meaning across the app: ports teal, secrets graphite, sizes blue, time pink, otherwise the page's own hue. */
