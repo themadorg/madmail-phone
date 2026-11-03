@@ -20,24 +20,52 @@ import javax.net.ssl.SSLSocket
 import javax.net.ssl.TrustManagerFactory
 
 class InvitationDeviceTest {
+    private fun tls(engine: LocalEngine): SSLContext {
+        val certificate = File(engine.dataDir, "certs/fullchain.pem").inputStream().use { CertificateFactory.getInstance("X.509").generateCertificate(it) }
+        val keys = KeyStore.getInstance(KeyStore.getDefaultType()).apply { load(null); setCertificateEntry("owned-engine", certificate) }
+        val trust = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm()).apply { init(keys) }
+        return SSLContext.getInstance("TLS").apply { init(null, trust.trustManagers, null) }
+    }
+    private fun imapLogin(engine: LocalEngine, email: String, password: String) =
+        (tls(engine).socketFactory.createSocket("127.0.0.1", 11993) as SSLSocket).use { socket ->
+            socket.soTimeout = 10000
+            val input = socket.inputStream.bufferedReader()
+            assertTrue(input.readLine()!!.startsWith("* OK"))
+            socket.outputStream.write("a LOGIN \"$email\" \"$password\"\r\n".toByteArray()); socket.outputStream.flush()
+            var reply: String
+            do { reply = input.readLine()!! } while (!reply.startsWith("a "))
+            assertTrue(reply, reply.startsWith("a OK"))
+        }
+    private fun smtpLogin(engine: LocalEngine, email: String, password: String) =
+        (tls(engine).socketFactory.createSocket("127.0.0.1", 11465) as SSLSocket).use { socket ->
+            socket.soTimeout = 10000
+            val input = socket.inputStream.bufferedReader()
+            fun reply(): String { var line: String; do { line = input.readLine()!! } while (line.getOrNull(3) == '-'); return line }
+            fun send(line: String) { socket.outputStream.write("$line\r\n".toByteArray()); socket.outputStream.flush() }
+            assertTrue(reply().startsWith("220")); send("EHLO localhost"); assertTrue(reply().startsWith("250"))
+            send("AUTH PLAIN " + java.util.Base64.getEncoder().encodeToString("\u0000$email\u0000$password".toByteArray()))
+            val auth = reply(); assertTrue(auth, auth.startsWith("235"))
+            send("QUIT")
+        }
     @Test fun accountQrSurvivesConcurrentClientLogins() = runBlocking(Dispatchers.IO) {
         val engine = LocalEngine.get(InstrumentationRegistry.getInstrumentation().targetContext)
         try {
             engine.start()
             repeat(4) {
-                val token = engine.invitationRequest("POST", JSONObject().put("max_uses", 1).put("expires_in", "1h").put("comment", "Concurrent account QR test")).getString("token")
+                val token = engine.invitationRequest("POST", JSONObject().put("max_uses", 5).put("expires_in", "1h").put("comment", "Concurrent account QR test")).getString("token")
                 var email: String? = null
                 try {
                     val guest = engine.createGuest(token)
                     email = guest.getString("email")
-                    // Publication now means the one-use reservation has been settled, not pending.
+                    // Readiness only greets the ports, so the first login is still the guest's to make.
                     val entries = engine.invitationRequest("GET").getJSONArray("tokens")
                     val item = (0 until entries.length()).map { entries.getJSONObject(it) }.single { it.getString("token") == token }
-                    assertEquals(1, item.getInt("used_count"))
-                    assertEquals(0, item.getInt("pending_reservations"))
+                    assertEquals(1, item.getInt("used_count") + item.getInt("pending_reservations"))
+                    // A client signs in to IMAP and SMTP at once; neither first login may remove the account.
+                    val password = guest.getString("password")
                     coroutineScope {
-                        (1..4).map { async(Dispatchers.IO) {
-                            LocalAccountReadiness.verify(guest, File(engine.dataDir, "certs/fullchain.pem"))
+                        (1..4).map { n -> async(Dispatchers.IO) {
+                            if (n % 2 == 0) imapLogin(engine, email!!, password) else smtpLogin(engine, email!!, password)
                         } }.awaitAll()
                     }
                     val accounts = engine.adminRequest("/admin/accounts").getJSONArray("accounts")
@@ -97,9 +125,11 @@ class InvitationDeviceTest {
             assertTrue("No network candidates on the connected test phone", addresses.isNotEmpty())
             val wifi = addresses.first { it.network == org.madmail.mobile.core.GuestNetwork.Wifi }
             assertTrue(GuestNetworks.checkPorts(wifi.origin).all { it.second })
-            assertEquals("madmail.local", engine.browserInviteHost(wifi.origin))
+            // The mail domain follows the chosen guest IP; a name never becomes the domain.
+            engine.useMailHost(wifi.host)
+            assertEquals(wifi.host, engine.browserInviteHost(wifi.origin))
             val before = engine.invitationRequest("GET").getJSONArray("tokens").length()
-            creation.create(wifi.origin, false, 2, "Blocked browser invitation test", "24h")
+            creation.create("https://phone.tailnet.ts.net:18443", false, 2, "Blocked browser invitation test", "24h")
             val blocked = withTimeout(15000) { creation.state.first { !it.busy } }
             assertTrue(blocked.error!!.contains("Choose Account QR"))
             assertFalse(blocked.uncertain)
@@ -111,6 +141,7 @@ class InvitationDeviceTest {
             assertNull(result.error)
             account = result.code!!.substringAfter("dclogin://").substringBefore('/')
             assertTrue(result.code.contains("ih=${wifi.host}"))
+            assertTrue(account.endsWith("@[${wifi.host}]"))
             val entries = engine.invitationRequest("GET").getJSONArray("tokens")
             val items = (0 until entries.length()).map { entries.getJSONObject(it) }
             token = items.single { it.optString("comment") == "Controller invitation test" }.getString("token")

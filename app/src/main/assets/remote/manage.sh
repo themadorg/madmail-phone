@@ -42,7 +42,7 @@ case "$operation" in
     rm -f "$base/releases/$version"
     ;;
  install)
-    version=$1; digest=$2; upload=$3
+    version=$1; digest=$2; upload=$3; ip=${4:-}
     printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'
     printf '%s' "$digest" | grep -Eq '^[a-f0-9]{64}$'
     case "$upload" in /tmp/madmail-mobile-*) ;; *) exit 1 ;; esac
@@ -59,6 +59,12 @@ case "$operation" in
         for service in madmail.service maddy.service; do
             if systemctl cat "$service" >/dev/null 2>&1; then echo 'Existing Madmail installation detected; migration is required'; exit 1; fi
         done
+    fi
+    if [ ! -f "$conf/chatmail.toml" ]; then
+        # A new config takes the server's IPv4 address as its mail domain, never a .local name. Resolve it before changing anything.
+        valid_ip() { printf '%s' "$1" | grep -Eq '^[0-9]{1,3}(\.[0-9]{1,3}){3}$' && case "$1" in 127.*|0.*) false ;; esac; }
+        valid_ip "$ip" || ip=$(ip -o -4 route get 1.1.1.1 2>/dev/null | sed -n 's/.* src \([0-9.]*\).*/\1/p')
+        valid_ip "$ip" || { echo 'Could not find an IPv4 address for this server'; exit 1; }
     fi
     mkdir -p "$base/releases" "$base/backups" "$conf"
     id madmail-mobile >/dev/null 2>&1 || useradd --system --home-dir "$data" --shell /usr/sbin/nologin madmail-mobile
@@ -78,9 +84,10 @@ case "$operation" in
     printf '%s  %s\n' "$digest" "$base/releases/$version.partial" | sha256sum -c - >/dev/null
     mv "$base/releases/$version.partial" "$base/releases/$version"
     if [ ! -f "$conf/chatmail.toml" ]; then
-        cat > "$conf/chatmail.toml" <<'CONFIG'
-hostname = "madmail.local"
-primary_domain = "madmail.local"
+        cat > "$conf/chatmail.toml" <<CONFIG
+hostname = "$ip"
+primary_domain = "[$ip]"
+public_ip = "$ip"
 tls_mode = "self_signed"
 auth_auto_create = true
 smtp_listen = "127.0.0.1:1125"

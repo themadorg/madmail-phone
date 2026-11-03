@@ -1,13 +1,36 @@
+@file:OptIn(ExperimentalSharedTransitionApi::class)
+
 package org.madmail.mobile
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.BoundsTransform
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionLayout
+import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.animation.core.*
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.interaction.InteractionSource
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerState
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -15,127 +38,722 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.*
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Dns
+import androidx.compose.material.icons.rounded.Link
+import androidx.compose.material.icons.rounded.PhoneAndroid
+import androidx.compose.material.icons.rounded.Terminal
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.lerp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.util.lerp
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.border
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material.icons.rounded.BatteryFull
+import androidx.compose.material.icons.rounded.Cancel
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Key
+import androidx.compose.material.icons.rounded.VerifiedUser
+import androidx.compose.material.icons.rounded.Wifi
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.semantics.error
+import androidx.compose.ui.semantics.paneTitle
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
+import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
+import com.google.zxing.qrcode.encoder.Encoder
+import kotlinx.coroutines.launch
+import kotlin.math.abs
+import kotlin.math.floor
+
+/** A place a remote Madmail server can live. Providers only prefill the sign-in user and a hint; nothing is provisioned. */
+internal data class RemoteProvider(val id: String, val name: String, val note: String, val hint: String, val user: String = "root",
+    val monogram: String? = null, val tint: Long = 0, val tint2: Long = 0, val ink: Long = 0xFFFFFFFF, val apiOnly: Boolean = false)
+
+private const val ROOT_HINT = "Use the server’s public IP address."
+
+internal val existingInstance = RemoteProvider("api", "Madmail Admin API", "Already running Madmail", "Enter its address and admin API key.", apiOnly = true)
+
+private val selfHosted = RemoteProvider("ssh", "Self-hosted server", "Any Linux server over SSH", "Needs an account with sudo.")
+
+private val cloudProviders = listOf(
+    RemoteProvider("digitalocean", "DigitalOcean", "Droplet · username root", "Use the Droplet’s public IP address.", monogram = "DO", tint = 0xFF3C8BFF, tint2 = 0xFF0055E0),
+    RemoteProvider("aws", "Amazon Web Services", "EC2 or Lightsail · username ubuntu", "Use its public IP. Amazon Linux uses ec2-user.", "ubuntu", "aws", 0xFFFFB23F, 0xFFF08300, 0xFF232F3E),
+    RemoteProvider("gcp", "Google Cloud", "Compute Engine · your own username", "Use the VM’s external IP and your SSH key’s username.", "", "G", 0xFFFFFFFF, 0xFFE8EAED, 0xFF4285F4),
+    RemoteProvider("hetzner", "Hetzner", "Cloud server · username root", ROOT_HINT, monogram = "H", tint = 0xFFE5484D, tint2 = 0xFFA3101C),
+    RemoteProvider("linode", "Akamai Linode", "Linode · username root", ROOT_HINT, monogram = "L", tint = 0xFF2BC26B, tint2 = 0xFF008C4A),
+    RemoteProvider("vultr", "Vultr", "Cloud compute · username root", ROOT_HINT, monogram = "V", tint = 0xFF2EC4FF, tint2 = 0xFF0A8FD6),
+    RemoteProvider("oracle", "Oracle Cloud", "Ubuntu instance · username ubuntu", "Use its public IP. Oracle Linux uses opc.", "ubuntu", "O", 0xFFFF8A65, 0xFFD2501F),
+)
+
+internal val remoteProviders = listOf(selfHosted) + cloudProviders
+
+private enum class SetupStep { Intro, Choose, Providers, Remote, Existing, Phone }
+
+private class IntroPage(val title: String, val body: String)
+
+private val introPages = listOf(
+    IntroPage("A mail server,\non your terms.", "Host Madmail for the people you invite."),
+    IntroPage("Runs on this phone.", "Over Wi-Fi, hotspot or VPN. No root needed."),
+    IntroPage("Invite with a scan.", "Each guest scans their own QR in Delta Chat."),
+    IntroPage("Or on your own server.", "Connect a VPS and manage it from here."),
+)
+
+// One curve for every morph: quick start, long settle, no overshoot.
+private val MorphBounds = BoundsTransform { _, _ -> tween(500, easing = Emphasized) }
 
 @Composable
 internal fun HostSetup(phone: Boolean, phoneConfigured: Boolean, initialName: String, firstRun: Boolean,
-    onPhone: () -> Unit, onRemote: () -> Unit, onBack: () -> Unit, onCancel: (() -> Unit)?, onComplete: (String) -> Unit) {
-    var welcome by rememberSaveable { mutableStateOf(firstRun) }
-    var review by rememberSaveable { mutableStateOf(false) }
+    onPhone: () -> Unit, onBack: () -> Unit, onCancel: (() -> Unit)?, onComplete: (String) -> Unit,
+    onSaveRemote: (host: String, user: String, port: Int, apiEndpoint: String?, apiKey: String?) -> String?) {
+    var choosing by rememberSaveable { mutableStateOf(false) }
+    var providers by rememberSaveable { mutableStateOf(false) }
+    var providerId by rememberSaveable { mutableStateOf("") }
+    // Kept across Back so picking the same provider again keeps an edited username.
+    var lastProviderId by rememberSaveable { mutableStateOf("") }
+    var existing by rememberSaveable { mutableStateOf(false) }
     var name by rememberSaveable { mutableStateOf(initialName) }
+    // Drafts survive Back so nothing typed is lost; the API key is never written to saved state.
+    var host by rememberSaveable { mutableStateOf("") }
+    var user by rememberSaveable { mutableStateOf("root") }
+    var port by rememberSaveable { mutableStateOf("22") }
+    var address by rememberSaveable { mutableStateOf("") }
+    var apiKey by remember { mutableStateOf("") }
+    var saveError by remember { mutableStateOf<String?>(null) }
+    var tried by rememberSaveable { mutableStateOf(false) }
+    val fields = remember { List(3) { FocusRequester() } }
+    val pager = rememberPagerState { introPages.size }
+    val scope = rememberCoroutineScope()
     val focus = LocalFocusManager.current
-    val stage = when { welcome -> "welcome"; !phone -> "choose"; review -> "ready"; else -> "phone" }
+    val haptics = LocalHapticFeedback.current
+    val provider = remoteProviders.firstOrNull { it.id == providerId }
+    val step = when { existing -> SetupStep.Existing; provider != null -> SetupStep.Remote; providers -> SetupStep.Providers
+        phone -> SetupStep.Phone; firstRun -> SetupStep.Intro; else -> SetupStep.Choose }
+    fun tap() = haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
     fun back() {
-        focus.clearFocus()
-        when (stage) {
-            "ready" -> review = false
-            "phone" -> { review = false; onBack() }
-            "choose" -> if (firstRun) welcome = true else onCancel?.invoke()
+        focus.clearFocus(); tried = false
+        when (step) {
+            SetupStep.Existing -> existing = false
+            SetupStep.Remote -> providerId = ""
+            SetupStep.Providers -> providers = false
+            SetupStep.Phone -> onBack()
+            SetupStep.Intro -> if (choosing) choosing = false else scope.launch { pager.animateScrollToPage(pager.currentPage - 1, animationSpec = tween(480, easing = Emphasized)) }
+            SetupStep.Choose -> onCancel?.invoke()
         }
     }
-    BackHandler(stage == "ready" || stage == "phone" || stage == "choose" && firstRun) { back() }
-    val colors = MaterialTheme.colorScheme
-    AnimatedContent(stage, transitionSpec = { fadeIn(tween(240, 60)) togetherWith fadeOut(tween(120)) }, label = "Onboarding step") { shown ->
-        Column(Modifier.fillMaxSize().systemBarsPadding().imePadding()) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (shown != "welcome" && (shown != "choose" || firstRun)) {
-                    IconButton(onClick = { back() }) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Previous setup step") }
-                } else Spacer(Modifier.width(12.dp))
-                Text("Madmail", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-                onCancel?.let { TextButton(onClick = it) { Text("Cancel") } }
-            }
-            Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(top = 32.dp, bottom = 24.dp),
-                verticalArrangement = Arrangement.spacedBy(24.dp)) {
-                Surface(color = colors.primaryContainer, shape = RoundedCornerShape(20.dp)) {
-                    Icon(when (shown) { "welcome" -> Icons.Outlined.MarkEmailUnread; "choose" -> Icons.Outlined.Dns; "phone" -> Icons.Outlined.PhoneAndroid; else -> Icons.Outlined.CheckCircle },
-                        null, Modifier.padding(20.dp).size(36.dp), tint = colors.onPrimaryContainer)
+    // Validation waits for the first tap on the action, then follows every keystroke. The action is never disabled.
+    fun submit(errors: List<String?>, save: () -> Unit) {
+        tried = true
+        val first = errors.indexOfFirst { it != null }
+        if (first >= 0) { haptics.performHapticFeedback(HapticFeedbackType.Reject); fields[first].requestFocus(); return }
+        focus.clearFocus(); haptics.performHapticFeedback(HapticFeedbackType.Confirm); save()
+    }
+    val remoteErrors = if (provider == null) List(3) { null } else listOf(hostError(parseSshTarget(host.trim()).host), userError(user, provider), portError(port))
+    val endpoint = apiEndpoint(address)
+    val existingErrors = listOf(addressError(address, endpoint), keyError(apiKey))
+    val saveRemote = {
+        // Typed rather than pasted "root@5.75.1.2" is understood on submit too.
+        val target = parseSshTarget(host.trim())
+        host = target.host; target.user?.let { user = it }; target.port?.let { port = it.toString() }
+        submit(listOf(hostError(host), userError(user, provider ?: selfHosted), portError(port))) { onSaveRemote(host.trim(), user.trim(), port.toInt(), null, null) }
+    }
+    val connect = {
+        submit(existingErrors) {
+            saveError = onSaveRemote(java.net.URI(endpoint!!).host, "root", 22, endpoint, apiKey)
+            if (saveError != null) haptics.performHapticFeedback(HapticFeedbackType.Reject)
+        }
+    }
+    val canGoBack = step != SetupStep.Choose && (step != SetupStep.Intro || choosing || pager.currentPage > 0)
+    BackHandler(canGoBack) { back() }
+    LaunchedEffect(pager) { snapshotFlow { pager.settledPage }.collect { haptics.performHapticFeedback(HapticFeedbackType.SegmentTick) } }
+    val choices: @Composable Morph.(Color) -> Unit = { fill ->
+        ChoiceRows(phoneConfigured, fill,
+            onPhone = { tap(); onPhone() },
+            onRemote = { tap(); providers = true },
+            onExisting = { tap(); tried = false; existing = true })
+    }
+    // Every step after the choice keeps the sheet's warm colour, so the sheet reads as having grown to fill the screen.
+    val page by animateColorAsState(if (step == SetupStep.Intro) introColor() else panelColor(), tween(400, easing = Emphasized), label = "Setup page")
+
+    SharedTransitionLayout(Modifier.fillMaxSize().background(page)) {
+        // Every screen draws its own action in the same slot, so nothing resizes between steps.
+        // A focused field would otherwise swallow Back just to drop its focus, so the gesture would seem to do nothing.
+        AnimatedContent(step, Modifier.fillMaxSize().systemBarsPadding().imePadding().onPreviewKeyEvent {
+            if (!canGoBack || it.key != Key.Back) false else { if (it.type == KeyEventType.KeyUp) back(); true }
+        }, label = "Onboarding step",
+            transitionSpec = { fadeIn(tween(220)) togetherWith fadeOut(tween(100)) }) { shown ->
+            val morph = Morph(this@SharedTransitionLayout, this)
+            when (shown) {
+                SetupStep.Intro -> morph.Intro(pager, choosing, onOpen = { tap(); choosing = true }, onClose = { choosing = false }, choices = choices)
+                SetupStep.Choose -> Column(Modifier.fillMaxSize().semantics { paneTitle = "Add a server" }) {
+                    morph.TopBar(showLogo = true, showBack = false, onBack = ::back, onCancel = onCancel)
+                    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(top = 12.dp, bottom = 24.dp)) {
+                        morph.StepHeader("Add a server", "Choose where it runs.")
+                        Spacer(Modifier.height(28.dp))
+                        Box(Modifier.padding(horizontal = GroupGutter)) { morph.choices(groupColor()) }
+                    }
                 }
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(when (shown) { "welcome" -> "A mail server,\non your terms."; "choose" -> "Where will it run?"; "phone" -> "Make this phone\nyour server."; else -> "Ready when you are." },
-                        style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.semantics { heading() })
-                    Text(when (shown) {
-                        "welcome" -> "Run Madmail on this phone or manage a remote server. Invite people with a QR code; they use a mail client such as Delta Chat."
-                        "choose" -> "Choose your first host. You can manage more than one and switch between them later."
-                        "phone" -> "Give it a name you’ll recognize in your server list."
-                        else -> "Your setup is ready to save. Hosting will stay off until you start it."
-                    }, style = MaterialTheme.typography.bodyLarge, color = colors.onSurfaceVariant)
-                }
-                when (shown) {
-                    "welcome" -> {
-                        SetupDetail(Icons.Outlined.Dns, "Choose where to host", "Use this device or connect your own server.")
-                        SetupDetail(Icons.Outlined.QrCode2, "Invite with a scan", "Generate a personal account QR when your server is online.")
-                        SetupDetail(Icons.Outlined.Tune, "Stay in control", "Manage accounts, server settings and hosting from one place.")
-                    }
-                    "choose" -> {
-                        HostOption(Icons.Outlined.PhoneAndroid, "This phone", if (phoneConfigured) "Open the phone server you already set up." else "For devices on your Wi-Fi, hotspot or VPN. Keep this phone on and connected.") { review = false; onPhone() }
-                        HostOption(Icons.Outlined.Dns, "Remote server", "Connect using SSH or an Admin API. Your server runs independently of this phone.", onRemote)
-                    }
-                    "phone" -> {
-                        OutlinedTextField(name, { name = it.take(80) }, label = { Text("Server name") }, placeholder = { Text("This phone") }, singleLine = true,
-                            modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { focus.clearFocus() }),
-                            supportingText = { Text("Only the name shown in this app. You can change it later.") })
-                        SetupDetail(Icons.Outlined.Wifi, "Share a network", "Guests need to reach this phone over Wi-Fi, hotspot or VPN. You can choose the address when creating an invitation.")
-                        SetupDetail(Icons.Outlined.BatteryFull, "Keep it available", "Hosting needs this phone to stay on. Background access helps keep connections available when the screen is off.")
-                        BackgroundHostingAccess()
-                    }
-                    "ready" -> {
-                        SetupDetail(Icons.Outlined.PhoneAndroid, name.trim().ifBlank { "This phone" }, "Hosted on this device · no root access needed")
-                        HorizontalDivider()
-                        SetupDetail(Icons.Outlined.PlayArrow, "Start hosting", "Use Start hosting on Overview when you’re ready.")
-                        SetupDetail(Icons.Outlined.QrCode2, "Connect another device", "Generate a connection QR and scan it in Delta Chat. Share each personal account with one person.")
-                        Text("Network and registration options are available in Settings.", style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
+                SetupStep.Providers -> Column(Modifier.fillMaxSize().semantics { paneTitle = "Choose where your server runs" }) {
+                    morph.TopBar(showLogo = false, showBack = true, onBack = ::back, onCancel = onCancel)
+                    morph.ProvidersStep {
+                        tap(); tried = false
+                        if (it.id != lastProviderId) user = it.user
+                        lastProviderId = it.id; providerId = it.id
                     }
                 }
-            }
-            if (shown != "choose") Surface(color = colors.background) {
-                Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(bottom = 16.dp, top = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = {
-                        focus.clearFocus()
-                        when (shown) { "welcome" -> welcome = false; "phone" -> review = true; "ready" -> onComplete(name.trim()) }
-                    }, modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)) {
-                        Text(when (shown) { "welcome" -> "Get started"; "phone" -> "Review setup"; else -> if (phoneConfigured) "Open phone server" else "Finish setup" })
-                        Spacer(Modifier.width(8.dp)); Icon(Icons.AutoMirrored.Outlined.ArrowForward, null, Modifier.size(20.dp))
+                SetupStep.Remote -> Column(Modifier.fillMaxSize().semantics { paneTitle = "Server details" }) {
+                    morph.TopBar(showLogo = false, showBack = true, onBack = ::back, onCancel = onCancel)
+                    Box(Modifier.weight(1f)) {
+                        morph.RemoteStep(provider ?: selfHosted, host, user, port, if (tried) remoteErrors else List(3) { null }, fields,
+                            onHost = { value ->
+                                // A pasted "ssh root@203.0.113.5 -p 2222" fills all three fields. Typing stays literal so the field never rewrites mid-word.
+                                if (value.length - host.length > 1) {
+                                    val target = parseSshTarget(value)
+                                    host = target.host; target.user?.let { user = it }; target.port?.let { port = it.toString() }
+                                } else host = value
+                            },
+                            onUser = { user = it.trim() }, onPort = { port = it.filter(Char::isDigit).take(5) }, onDone = saveRemote)
                     }
-                    if (shown == "welcome") TextButton(onClick = { welcome = false; onRemote() }, modifier = Modifier.align(Alignment.CenterHorizontally)) { Text("I already have a remote server") }
+                    morph.ActionSlot("Continue", saveRemote)
+                }
+                SetupStep.Existing -> Column(Modifier.fillMaxSize().semantics { paneTitle = "Connect your Madmail" }) {
+                    morph.TopBar(showLogo = false, showBack = true, onBack = ::back, onCancel = onCancel)
+                    Box(Modifier.weight(1f)) {
+                        morph.ExistingStep(address, apiKey, endpoint, saveError, if (tried) existingErrors else List(2) { null }, fields,
+                            onAddress = { address = it.trim(); saveError = null }, onKey = { apiKey = it.trim(); saveError = null }, onDone = connect)
+                    }
+                    morph.ActionSlot("Connect", connect)
+                }
+                SetupStep.Phone -> Column(Modifier.fillMaxSize().semantics { paneTitle = "Host on this phone" }) {
+                    morph.TopBar(showLogo = false, showBack = true, onBack = ::back, onCancel = onCancel)
+                    Box(Modifier.weight(1f)) { morph.PhoneStep(name, fields[0], { name = it.take(80) }) { focus.clearFocus() } }
+                    morph.ActionSlot(if (phoneConfigured) "Open phone server" else "Add this phone") {
+                        focus.clearFocus(); haptics.performHapticFeedback(HapticFeedbackType.Confirm); onComplete(name.trim())
+                    }
                 }
             }
         }
     }
 }
 
+private class SshTarget(val host: String, val user: String?, val port: Int?)
+
+/** Accepts what provider dashboards show: a bare address, user@host, host:port, or a full ssh command with its options. */
+private fun parseSshTarget(raw: String): SshTarget {
+    if (raw.none { it == '@' || it.isWhitespace() } && !Regex("^[^:]+:\\d+$").matches(raw)) return SshTarget(raw, null, null)
+    val parts = raw.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }.toMutableList()
+    if (parts.firstOrNull() == "ssh") parts.removeAt(0)
+    var port: Int? = null
+    var user: String? = null
+    var target: String? = null
+    var index = 0
+    while (index < parts.size) {
+        val part = parts[index++]
+        if (!part.startsWith("-") || part.length < 2) { if (target == null) target = part; continue }
+        val letter = part[1]
+        if (letter !in SSH_VALUE_OPTIONS) continue
+        // Options take their value attached (-p2222) or as the next word (-p 2222).
+        val value = part.drop(2).ifEmpty { parts.getOrNull(index++) } ?: continue
+        when (letter) { 'p' -> port = value.toIntOrNull() ?: port; 'l' -> user = value }
+    }
+    var host = target ?: ""
+    if ('@' in host) { user = host.substringBefore('@').takeIf { it.isNotEmpty() } ?: user; host = host.substringAfter('@') }
+    if (host.count { it == ':' } == 1) host.substringAfter(':').toIntOrNull()?.let { port = it; host = host.substringBefore(':') }
+    return SshTarget(host, user, port)
+}
+
+/** ssh options that consume a value, so the value is never mistaken for the destination. */
+private const val SSH_VALUE_OPTIONS = "BbcDEeFIiJLlmOoPpQRSWw"
+
+private fun hostError(host: String) = when {
+    host.isBlank() -> "Enter an IP address or hostname."
+    host.trim().any { it.isWhitespace() || it in "/@;" } -> "Use just the address, like 203.0.113.5."
+    else -> null
+}
+
+private fun userError(user: String, provider: RemoteProvider) = when {
+    user.isBlank() -> if (provider.id == "gcp") "Enter your SSH key’s username." else "Enter a username."
+    !user.matches(Regex("[a-zA-Z_][a-zA-Z0-9_-]*")) -> "Usernames use letters, numbers, - and _."
+    else -> null
+}
+
+private fun portError(port: String) = if (port.toIntOrNull() in 1..65535) null else "Use a port from 1 to 65535."
+
+/** A bare domain gets https:// and normalize adds /api/admin, so "mail.example.org" is enough. */
+private fun apiEndpoint(address: String): String? {
+    val value = address.trim().ifEmpty { return null }
+    return org.madmail.mobile.engine.ApiEndpoint.normalize(if ("://" in value) value else "https://$value")
+}
+
+private fun addressError(address: String, endpoint: String?) = when {
+    address.isBlank() -> "Enter your Madmail’s address."
+    address.trim().startsWith("http://", ignoreCase = true) -> "Use an https:// address."
+    endpoint == null -> "Enter an address like mail.example.org."
+    else -> null
+}
+
+private fun keyError(key: String) = when {
+    key.isBlank() -> "Paste the admin API key."
+    key.length > 8192 -> "Key too long. Copy only the key."
+    key.any { it.isISOControl() } -> "Key has invalid characters."
+    else -> null
+}
+
+/** Shared-transition helpers bound to the step currently being shown. */
+private class Morph(val shared: SharedTransitionScope, val visibility: AnimatedVisibilityScope) {
+    @Composable
+    fun Modifier.element(key: String): Modifier = with(shared) {
+        this@element.sharedElement(rememberSharedContentState(key), visibility, boundsTransform = MorphBounds)
+    }
+
+    @Composable
+    fun Modifier.bounds(key: String): Modifier = with(shared) {
+        this@bounds.sharedBounds(rememberSharedContentState(key), visibility, boundsTransform = MorphBounds,
+            enter = fadeIn(tween(220, 80)), exit = fadeOut(tween(120)), resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds)
+    }
+
+    /** Content that is not shared settles in after the morph starts, in reading order. */
+    fun Modifier.arrive(order: Int): Modifier = with(visibility) {
+        this@arrive.animateEnterExit(
+            enter = fadeIn(tween(260, 40 + order * 35)) + slideInVertically(tween(420, 40 + order * 35, ExpoOut)) { 24 },
+            exit = fadeOut(tween(100)))
+    }
+
+    /** Fade only, no rise, timed to land after a flying mark has passed so the two never overlap. */
+    fun Modifier.settle(delay: Int): Modifier = with(visibility) {
+        this@settle.animateEnterExit(enter = fadeIn(tween(180, delay, LinearOutSlowInEasing)), exit = fadeOut(tween(100)))
+    }
+}
+
 @Composable
-private fun SetupDetail(icon: ImageVector, title: String, detail: String) {
-    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-        Icon(icon, null, Modifier.padding(top = 2.dp).size(24.dp), tint = MaterialTheme.colorScheme.primary)
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(title, style = MaterialTheme.typography.titleMedium)
+private fun Morph.TopBar(showLogo: Boolean, showBack: Boolean, onBack: () -> Unit, onCancel: (() -> Unit)?) {
+    Box(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 4.dp)) {
+        if (showBack) IconButton(onClick = onBack, modifier = Modifier.align(Alignment.CenterStart).element("back")) {
+            Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back")
+        }
+        if (showLogo) Image(painterResource(R.drawable.madmail_logo), null, Modifier.align(Alignment.Center).size(34.dp).element("logo"))
+        onCancel?.let { TextButton(onClick = it, modifier = Modifier.align(Alignment.CenterEnd).element("cancel")) { Text("Cancel") } }
+    }
+}
+
+@Composable
+private fun Morph.ActionSlot(label: String, onClick: () -> Unit) {
+    BrandButton(label, Modifier.padding(horizontal = 24.dp).padding(top = 8.dp, bottom = 16.dp).bounds("action"), onClick = onClick)
+}
+
+@Composable
+private fun Morph.Intro(pager: PagerState, choosing: Boolean, onOpen: () -> Unit, onClose: () -> Unit, choices: @Composable Morph.(Color) -> Unit) {
+    val position = pager.currentPage + pager.currentPageOffsetFraction
+    val outer = this
+    val scope = rememberCoroutineScope()
+    // One number drives the whole morph: 0 is the Get started button, 1 is the open sheet. A drag on the sheet scrubs it.
+    val progress = remember { Animatable(if (choosing) 1f else 0f) }
+    LaunchedEffect(choosing) { progress.animateTo(if (choosing) 1f else 0f, tween(if (choosing) 520 else 440, easing = Emphasized)) }
+    val sheetShown by remember { derivedStateOf { progress.value > 0f } }
+    val faceShown by remember { derivedStateOf { progress.value < 0.35f } }
+    val sheetHeight = remember { intArrayOf(1) }
+    val red = brandRed(); val panel = panelColor()
+    val source = remember { MutableInteractionSource() }
+    val pressed by source.collectIsPressedAsState()
+    val press by animateFloatAsState(if (pressed && !choosing) 0.97f else 1f, tween(if (pressed) 90 else 220, easing = Emphasized), label = "Press scale")
+    val drag = rememberDraggableState { delta -> scope.launch { progress.snapTo((progress.value - delta / sheetHeight[0]).coerceIn(0f, 1f)) } }
+    Box(Modifier.fillMaxSize()) {
+        // The pages recede a little behind the sheet instead of moving.
+        Column(Modifier.fillMaxSize().graphicsLayer { val s = 1f - 0.04f * progress.value; scaleX = s; scaleY = s }) {
+            Spacer(Modifier.height(56.dp))
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                HorizontalPager(pager, Modifier.fillMaxSize(), userScrollEnabled = !choosing) { index ->
+                    val page = introPages[index]
+                    Column(Modifier.fillMaxSize().padding(horizontal = 32.dp).padding(top = StageHeight + 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(page.title, Modifier.semantics { heading() }, textAlign = TextAlign.Center, style = MaterialTheme.typography.displaySmall,
+                            fontWeight = FontWeight.SemiBold, letterSpacing = (-0.5).sp, lineHeight = 42.sp)
+                        Spacer(Modifier.height(14.dp))
+                        Text(page.body, Modifier.widthIn(max = 360.dp), textAlign = TextAlign.Center,
+                            style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                // Drawn over the pager without touch handling: swipes anywhere move the pages and the stage follows the finger.
+                Stage(position, Modifier.fillMaxWidth().height(StageHeight))
+            }
+            PageDots(position, introPages.size, Modifier.align(Alignment.CenterHorizontally).padding(bottom = 20.dp))
+            Spacer(Modifier.height(ActionHeight + 24.dp))
+        }
+        // The dim reaches under the status and navigation bars, like a system sheet's.
+        val bars = WindowInsets.systemBars
+        Box(Modifier.layout { measurable, constraints ->
+            val top = bars.getTop(this); val bottom = bars.getBottom(this)
+            val dim = measurable.measure(Constraints.fixed(constraints.maxWidth, constraints.maxHeight + top + bottom))
+            layout(constraints.maxWidth, constraints.maxHeight) { dim.place(0, -top) }
+        }.drawBehind { drawRect(Color.Black.copy(alpha = 0.32f * progress.value)) }
+            .then(if (choosing) Modifier.clickable(interactionSource = null, indication = null, onClick = onClose) else Modifier))
+        // A single surface: its width, height, corners and colour are all functions of progress, so it never jumps between two layouts.
+        Layout(listOf(
+            {
+                if (sheetShown) Column(Modifier.graphicsLayer { alpha = ((progress.value - 0.3f) / 0.7f).coerceIn(0f, 1f); translationY = (1f - progress.value) * 24.dp.toPx() }
+                    .draggable(drag, Orientation.Vertical, enabled = choosing, onDragStopped = { velocity ->
+                        if (progress.value < 0.75f || velocity > 1200f) onClose() else progress.animateTo(1f, tween(300, easing = Emphasized))
+                    }).padding(start = 16.dp, end = 16.dp, bottom = 16.dp)) {
+                    Box(Modifier.align(Alignment.CenterHorizontally).padding(top = 8.dp).size(36.dp, 5.dp).clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f)))
+                    Row(Modifier.fillMaxWidth().padding(start = 4.dp, top = 8.dp, bottom = 16.dp)) {
+                        Column(Modifier.weight(1f).padding(top = 6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("How will you host?", Modifier.semantics { heading() }, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                        }
+                        Box(Modifier.size(48.dp).clip(CircleShape).clickable(onClick = onClose, role = Role.Button), contentAlignment = Alignment.Center) {
+                            Box(Modifier.size(30.dp).clip(CircleShape).background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)), contentAlignment = Alignment.Center) {
+                                Icon(Icons.Rounded.Close, "Close", Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                    outer.choices(groupColor())
+                }
+            },
+            {
+                if (faceShown) Box(Modifier.graphicsLayer { alpha = 1f - (progress.value / 0.3f).coerceIn(0f, 1f) }
+                    .then(if (choosing) Modifier else Modifier.clickable(source, ripple(color = Color.White), role = Role.Button, onClick = onOpen)),
+                    contentAlignment = Alignment.Center) {
+                    Text("Get started", color = Color.White, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, letterSpacing = 0.1.sp)
+                    Box(Modifier.align(Alignment.CenterEnd).padding(end = 8.dp).size(44.dp).clip(CircleShape).background(Color.White), contentAlignment = Alignment.Center) {
+                        Icon(Icons.AutoMirrored.Outlined.ArrowForward, null, Modifier.size(22.dp), tint = red)
+                    }
+                }
+            },
+        ), Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp)
+            .graphicsLayer {
+                val p = progress.value
+                shape = RoundedCornerShape(lerp(ActionHeight / 2, 34.dp, p)); clip = true
+                shadowElevation = p * 24.dp.toPx(); scaleX = press; scaleY = press
+            }
+            // Red hands over to the sheet early so the in-between colour never lingers.
+            .drawBehind { drawRect(lerp(red, panel, (progress.value / 0.45f).coerceIn(0f, 1f))) }) { (sheet, face), constraints ->
+            val p = progress.value
+            val full = constraints.maxWidth
+            val sheetWidth = full - 24.dp.roundToPx(); val buttonWidth = full - 48.dp.roundToPx(); val action = ActionHeight.roundToPx()
+            // The sheet is always measured at its final width, so its text never reflows while the surface grows around it.
+            val content = sheet.firstOrNull()?.measure(Constraints.fixedWidth(sheetWidth))
+            if (content != null) sheetHeight[0] = content.height
+            val width = lerp(buttonWidth, sheetWidth, p); val height = lerp(action, maxOf(sheetHeight[0], action), p)
+            val button = face.firstOrNull()?.measure(Constraints.fixed(width, action))
+            layout(width, height) {
+                content?.place((width - sheetWidth) / 2, 0)
+                button?.place(0, height - action)
+            }
+        }
+    }
+}
+
+private val StageHeight = 300.dp
+
+private class StageFrame(val width: Float, val height: Float, val radius: Float, val logo: Float, val logoX: Float)
+
+// Keyframes per intro page: the logo alone, a phone around it, a QR code built on it, a server it lives in.
+private val stageFrames = listOf(
+    StageFrame(132f, 132f, 66f, 132f, 0f),
+    StageFrame(136f, 240f, 32f, 64f, 0f),
+    StageFrame(212f, 212f, 28f, 46f, 0f),
+    StageFrame(244f, 136f, 26f, 62f, -64f),
+)
+
+private const val EASTER_EGG = "https://madmail.chat/mobile"
+
+// A real code: scanning the intro's QR opens the Madmail mobile page. High correction survives the logo in the middle.
+private val easterEgg = Encoder.encode(EASTER_EGG, ErrorCorrectionLevel.H).matrix
+
+@Composable
+private fun Morph.Stage(position: Float, modifier: Modifier) {
+    val index = floor(position).toInt().coerceIn(0, stageFrames.size - 2)
+    val t = (position - index).coerceIn(0f, 1f).let { it * it * (3 - 2 * it) }
+    val a = stageFrames[index]; val b = stageFrames[index + 1]
+    fun near(page: Int) = (1f - abs(position - page)).coerceIn(0f, 1f)
+    val bodyWidth = lerp(a.width, b.width, t); val bodyHeight = lerp(a.height, b.height, t)
+    val radius = lerp(a.radius, b.radius, t)
+    val logoSize = lerp(a.logo, b.logo, t); val logoX = lerp(a.logoX, b.logoX, t)
+    val bodyAlpha = position.coerceIn(0f, 1f)
+    val group = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f)
+    val ink = MaterialTheme.colorScheme.onSurface
+    val accent = MaterialTheme.colorScheme.primary
+    val phone = near(1); val qr = near(2); val server = near(3)
+    Box(modifier.semantics { if (qr > 0.9f) contentDescription = "QR code for $EASTER_EGG" }, contentAlignment = Alignment.Center) {
+        Canvas(Modifier.fillMaxSize()) {
+            val w = bodyWidth.dp.toPx(); val h = bodyHeight.dp.toPx()
+            val topLeft = Offset((size.width - w) / 2, (size.height - h) / 2)
+            val corner = CornerRadius(radius.dp.toPx())
+            val fill = lerp(group, Color.White, qr)
+            drawRoundRect(fill.copy(alpha = fill.alpha * bodyAlpha), topLeft, Size(w, h), corner)
+            if (phone > 0f) {
+                drawRoundRect(ink.copy(alpha = 0.85f * phone), topLeft, Size(w, h), corner, style = Stroke(2.5.dp.toPx()))
+                val pill = 34.dp.toPx()
+                drawRoundRect(ink.copy(alpha = 0.5f * phone), Offset(size.width / 2 - pill / 2, topLeft.y + 12.dp.toPx()), Size(pill, 5.dp.toPx()), CornerRadius(3.dp.toPx()))
+                for (ring in 1..3) {
+                    val r = (10 + ring * 11).dp.toPx()
+                    drawArc(accent.copy(alpha = phone * (1f - ring * 0.2f)), 225f, 90f, false,
+                        Offset(size.width / 2 - r, topLeft.y - 6.dp.toPx() - r), Size(r * 2, r * 2), style = Stroke(3.dp.toPx(), cap = StrokeCap.Round))
+                }
+            }
+            if (qr > 0f) {
+                val grid = easterEgg.width; val quiet = 18.dp.toPx()
+                val cell = (minOf(w, h) - quiet * 2) / grid
+                val origin = Offset(size.width / 2 - cell * grid / 2, size.height / 2 - cell * grid / 2)
+                val module = Color.Black.copy(alpha = qr)
+                for (y in 0 until grid) for (x in 0 until grid) {
+                    // Slight overlap avoids hairline seams between neighbouring modules.
+                    if (easterEgg.get(x, y).toInt() == 1) drawRect(module, origin + Offset(x * cell, y * cell), Size(cell + 0.5f, cell + 0.5f))
+                }
+                val plate = (logoSize + 10).dp.toPx()
+                drawRoundRect(Color.White.copy(alpha = qr), Offset(size.width / 2 - plate / 2, size.height / 2 - plate / 2), Size(plate, plate), CornerRadius(plate / 2))
+            }
+            if (server > 0f) {
+                val left = size.width / 2 - 8.dp.toPx(); val right = topLeft.x + w - 20.dp.toPx()
+                for ((row, offset) in listOf(-22, 22).withIndex()) {
+                    val bar = 30.dp.toPx(); val top = size.height / 2 + offset.dp.toPx() - bar / 2
+                    drawRoundRect(ink.copy(alpha = 0.08f * server), Offset(left, top), Size(right - left, bar), CornerRadius(10.dp.toPx()))
+                    drawCircle(accent.copy(alpha = server * if (row == 0) 1f else 0.45f), 4.dp.toPx(), Offset(right - 14.dp.toPx(), top + bar / 2))
+                    drawRoundRect(ink.copy(alpha = 0.18f * server), Offset(left + 12.dp.toPx(), top + bar / 2 - 2.dp.toPx()), Size((right - left) * 0.42f, 4.dp.toPx()), CornerRadius(2.dp.toPx()))
+                }
+            }
+        }
+        Image(painterResource(R.drawable.madmail_logo), "Madmail", Modifier.offset(x = logoX.dp).size(logoSize.dp).element("logo"))
+    }
+}
+
+@Composable
+private fun PageDots(position: Float, count: Int, modifier: Modifier) {
+    val active = brandRed()
+    val idle = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f)
+    Row(modifier.semantics { contentDescription = "Page ${position.toInt() + 1} of $count" }, horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+        repeat(count) { index ->
+            val weight = (1f - abs(position - index)).coerceIn(0f, 1f)
+            Box(Modifier.size(lerp(6.dp, 22.dp, weight), 6.dp).clip(CircleShape).background(lerp(idle, active, weight)))
+        }
+    }
+}
+
+@Composable
+private fun Morph.StepHeader(title: String, body: String) {
+    Column(Modifier.padding(horizontal = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(title, Modifier.arrive(0).semantics { heading() }, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.4).sp)
+        Text(body, Modifier.arrive(1), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/** Colourful squircle marks, one hue per way of hosting, like a settings list. */
+internal enum class HostKind(val top: Long, val bottom: Long, val icon: ImageVector) {
+    Phone(0xFFFF5A4F, 0xFFD3141B, Icons.Rounded.PhoneAndroid),
+    Remote(0xFF4C9BFF, 0xFF1A66E0, Icons.Rounded.Dns),
+    Existing(0xFF3DD68C, 0xFF14A05A, Icons.Rounded.Link),
+    Ssh(0xFF7A8699, 0xFF3B4352, Icons.Rounded.Terminal),
+}
+
+@Composable
+internal fun HostIcon(kind: HostKind, modifier: Modifier = Modifier, size: Dp = 40.dp) = Squircle(kind.top, kind.bottom, kind.icon, modifier, size)
+
+@Composable
+private fun Morph.ChoiceRows(phoneConfigured: Boolean, fill: Color, onPhone: () -> Unit, onRemote: () -> Unit, onExisting: () -> Unit) {
+    Group(fill = fill) {
+        ChoiceRow({ HostIcon(HostKind.Phone, Modifier.element("mark-phone")) }, "Host on my phone",
+            if (phoneConfigured) "Already set up" else "Wi-Fi, hotspot or VPN", onPhone)
+        RowDivider()
+        ChoiceRow({ HostIcon(HostKind.Remote, Modifier.element("mark-remote")) }, "Host on a remote server", "SSH, DigitalOcean, AWS and more", onRemote)
+        RowDivider()
+        ChoiceRow({ HostIcon(HostKind.Existing, Modifier.element("mark-existing")) }, "I already run Madmail", "Admin address and key", onExisting)
+    }
+}
+
+/** A settings-style row: mark, title and one line, chevron. The mark is the shared element that flies into the next step. */
+@Composable
+private fun ChoiceRow(mark: @Composable () -> Unit, title: String, detail: String, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onClick).heightIn(min = 68.dp)
+        .padding(start = 14.dp, end = 10.dp, top = 12.dp, bottom = 12.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        mark()
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Text(detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+        Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
+    }
+}
+
+/** The tapped choice's mark lands here; the words settle in just after it has passed, so it never crosses visible text. */
+@Composable
+private fun Morph.Hero(title: String, body: String, mark: @Composable () -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
+        mark()
+        Spacer(Modifier.height(18.dp))
+        Text(title, Modifier.settle(330).semantics { heading() }, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.3).sp)
+        Spacer(Modifier.height(8.dp))
+        Text(body, Modifier.settle(370), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/** Shared page frame for every step after the choice: hero, then grouped content that arrives just after it. */
+@Composable
+private fun Morph.StepPage(title: String, body: String, mark: @Composable () -> Unit, content: @Composable ColumnScope.() -> Unit) {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(top = 8.dp, bottom = 24.dp)) {
+        Hero(title, body, mark)
+        Spacer(Modifier.height(28.dp))
+        Column(Modifier.padding(horizontal = GroupGutter).arrive(3), content = content)
     }
 }
 
 @Composable
-private fun HostOption(icon: ImageVector, title: String, detail: String, onClick: () -> Unit) {
-    OutlinedCard(onClick = onClick, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
-        Row(Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Icon(icon, null, Modifier.size(28.dp), tint = MaterialTheme.colorScheme.primary)
-                Text(title, style = MaterialTheme.typography.titleLarge)
-                Text(detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+private fun Morph.ProvidersStep(onPick: (RemoteProvider) -> Unit) {
+    StepPage("Where is your server?", "We’ll prefill the sign-in.", { HostIcon(HostKind.Remote, Modifier.element("mark-remote"), 56.dp) }) {
+        Caption("Your own")
+        Group { ChoiceRow({ ProviderMark(selfHosted, Modifier.element("mark-${selfHosted.id}")) }, selfHosted.name, selfHosted.note) { onPick(selfHosted) } }
+        Spacer(Modifier.height(24.dp))
+        Caption("Cloud providers")
+        Group {
+            cloudProviders.forEachIndexed { index, provider ->
+                if (index > 0) RowDivider()
+                ChoiceRow({ ProviderMark(provider, Modifier.element("mark-${provider.id}")) }, provider.name, provider.note) { onPick(provider) }
             }
-            Icon(Icons.AutoMirrored.Outlined.ArrowForward, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
+        }
+        Footer("Nothing is created or charged.")
+    }
+}
+
+@Composable
+internal fun ProviderMark(provider: RemoteProvider, modifier: Modifier = Modifier, size: Dp = 40.dp) {
+    if (provider.monogram == null) return HostIcon(if (provider.apiOnly) HostKind.Existing else HostKind.Ssh, modifier, size)
+    val shape = RoundedCornerShape(size * 0.28f)
+    // A white tile (Google) needs a hairline to keep its edge on a white card.
+    val edge = if (Color(provider.tint).luminance() > 0.8f) Modifier.border(0.5.dp, Color.Black.copy(alpha = 0.1f), shape) else Modifier
+    Box(modifier.size(size).clip(shape).background(Brush.verticalGradient(listOf(Color(provider.tint), Color(provider.tint2)))).then(edge),
+        contentAlignment = Alignment.Center) {
+        Text(provider.monogram, color = Color(provider.ink), fontWeight = FontWeight.Bold, letterSpacing = (-0.3).sp,
+            fontSize = (size.value * if (provider.monogram.length > 2) 0.34f else 0.4f).sp)
+    }
+}
+
+@Composable
+private fun Morph.RemoteStep(provider: RemoteProvider, host: String, user: String, port: String, errors: List<String?>, fields: List<FocusRequester>,
+    onHost: (String) -> Unit, onUser: (String) -> Unit, onPort: (String) -> Unit, onDone: () -> Unit) {
+    val title = if (provider.id == selfHosted.id) "Your own server" else "Connect to ${provider.name}"
+    StepPage(title, provider.hint, { ProviderMark(provider, Modifier.element("mark-${provider.id}"), 56.dp) }) {
+        Group {
+            FieldRow("Address", host, onHost, "203.0.113.5", fields[0], fieldKeyboard(KeyboardType.Uri, ImeAction.Next), { fields[1].requestFocus() }, errors[0])
+            RowDivider(16.dp)
+            FieldRow("Username", user, onUser, if (provider.id == "gcp") "your-username" else "root", fields[1], fieldKeyboard(KeyboardType.Ascii, ImeAction.Next), { fields[2].requestFocus() }, errors[1])
+            RowDivider(16.dp)
+            FieldRow("Port", port, onPort, "22", fields[2], fieldKeyboard(KeyboardType.Number, ImeAction.Done), onDone, errors[2])
+        }
+        Footer("Pasting an SSH command works too.")
+        Spacer(Modifier.height(24.dp))
+        Caption("What happens next")
+        Group {
+            InfoRow(Tint.Blue, Icons.Rounded.VerifiedUser, "Check the server", "Confirm its fingerprint.")
+            RowDivider(60.dp)
+            InfoRow(Tint.Orange, Icons.Rounded.Key, "Sign in", "Key or password. Nothing installs until you confirm.")
         }
     }
 }
+
+@Composable
+private fun Morph.ExistingStep(address: String, key: String, endpoint: String?, saveError: String?, errors: List<String?>, fields: List<FocusRequester>,
+    onAddress: (String) -> Unit, onKey: (String) -> Unit, onDone: () -> Unit) {
+    var reveal by remember { mutableStateOf(false) }
+    val clipboard = LocalClipboardManager.current
+    StepPage("Connect your Madmail", existingInstance.hint, { HostIcon(HostKind.Existing, Modifier.element("mark-existing"), 56.dp) }) {
+        Group {
+            FieldRow("Address", address, onAddress, "mail.example.org", fields[0], fieldKeyboard(KeyboardType.Uri, ImeAction.Next), { fields[1].requestFocus() }, errors[0])
+            RowDivider(16.dp)
+            FieldRow("Admin key", key, onKey, "Paste the key", fields[1], fieldKeyboard(KeyboardType.Password, ImeAction.Done), onDone, errors[1], secret = !reveal) {
+                if (key.isEmpty()) TextButton(onClick = { clipboard.getText()?.text?.let(onKey) }) { Text("Paste") }
+                else IconButton(onClick = { reveal = !reveal }) {
+                    Icon(if (reveal) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, if (reveal) "Hide key" else "Show key",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        if (saveError != null) Footer(saveError, MaterialTheme.colorScheme.error)
+        else endpoint?.let { Footer("Connects to $it") }
+        Footer("Key stored encrypted on this phone.")
+    }
+}
+
+@Composable
+private fun Morph.PhoneStep(name: String, field: FocusRequester, onName: (String) -> Unit, onDone: () -> Unit) {
+    val access = rememberBackgroundAccess()
+    StepPage("Make this phone your server", "Guests connect from their own phones.", { HostIcon(HostKind.Phone, Modifier.element("mark-phone"), 56.dp) }) {
+        Group {
+            FieldRow("Name", name, onName, "This phone", field, fieldKeyboard(KeyboardType.Text, ImeAction.Done, KeyboardCapitalization.Words), onDone,
+                trailing = if (name.isEmpty()) null else ({
+                    IconButton(onClick = { onName("") }) { Icon(Icons.Rounded.Cancel, "Clear name", Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)) }
+                }))
+        }
+        Footer("Only shown in this app.")
+        Spacer(Modifier.height(24.dp))
+        Caption("Before you start")
+        Group {
+            InfoRow(Tint.Blue, Icons.Rounded.Wifi, "Share a network", "Same Wi-Fi, hotspot or VPN as guests.")
+            RowDivider(60.dp)
+            InfoRow(Tint.Green, Icons.Rounded.BatteryFull, "Keep it running",
+                if (access.allowed) "Stays reachable with the screen off." else "Lets guests reach it with the screen off. Uses more battery.") {
+                if (access.allowed) Row(Modifier.semantics(mergeDescendants = true) {}, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Icon(Icons.Rounded.CheckCircle, null, Modifier.size(16.dp), tint = Color(0xFF14A05A))
+                    Text("Allowed", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else Box(Modifier.minimumInteractiveComponentSize().clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer)
+                    .clickable(role = Role.Button, onClick = access.request).padding(horizontal = 14.dp, vertical = 7.dp)) {
+                    Text("Allow", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimaryContainer, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
+        access.error?.let { Footer(it, MaterialTheme.colorScheme.error) }
+        Footer("Start hosting from Overview.")
+    }
+}
+
+/** The intro is lighter than the panel so the choice sheet reads as rising over it. */
+@Composable
+private fun introColor() = if (MaterialTheme.colorScheme.background.luminance() < 0.5f) Color(0xFF141212) else Color(0xFFFCFAF9)

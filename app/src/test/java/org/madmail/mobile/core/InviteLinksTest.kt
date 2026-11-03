@@ -20,6 +20,11 @@ class InviteLinksTest {
         assertTrue(result.contains("sc=3"))
         assertFalse(result.contains("localhost"))
     }
+    @Test fun ipAccountDomainPassesThroughUnchanged() {
+        val result = InviteLinks.login("dclogin:abcd@[100.64.90.15]/?p=p&v=1&ih=100.64.90.15&ip=11993&is=ssl&sh=100.64.90.15&sp=11465&ss=ssl&ic=3", "https://100.64.90.15:18443")
+        assertTrue(result.startsWith("dclogin://abcd@[100.64.90.15]/"))
+        assertTrue(result.contains("ih=100.64.90.15"))
+    }
     @Test fun ipv6HostAndStrictCertificatesArePreserved() {
         val result = InviteLinks.login("dclogin:u@example.org/?p=p&v=1&ip=993&is=ssl&sp=465&ss=ssl&ic=1", "https://[fd00::1]:18443")
         assertTrue(result.contains("ih=fd00%3A%3A1"))

@@ -17,7 +17,7 @@ class HostingService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
     override fun onCreate() {
         super.onCreate()
-        getSystemService(NotificationManager::class.java).createNotificationChannel(NotificationChannel("hosting", "Server hosting", NotificationManager.IMPORTANCE_LOW))
+        getSystemService(NotificationManager::class.java).createNotificationChannel(NotificationChannel("hosting", "Hosting", NotificationManager.IMPORTANCE_LOW))
         scope.launch {
             LocalEngine.get(this@HostingService).state.dropWhile { it.phase !in listOf(EnginePhase.Starting, EnginePhase.Running) }.collect { state ->
                 if (state.phase == EnginePhase.Running) getSystemService(NotificationManager::class.java).notify(41, notification("Hosting · ${state.version}"))

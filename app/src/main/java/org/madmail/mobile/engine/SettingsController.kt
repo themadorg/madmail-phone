@@ -31,7 +31,7 @@ internal class SettingsController private constructor(private val context: Conte
     fun refresh() { scope.launch { mutex.withLock {
         mutable.value = mutable.value.copy(busy = true, error = null)
         try { mutable.value = mutable.value.copy(values = request("/admin/settings"), stale = false) }
-        catch (_: Exception) { mutable.value = mutable.value.copy(stale = true, error = "Couldn’t refresh settings. Check the connection and try again.") }
+        catch (_: Exception) { mutable.value = mutable.value.copy(stale = true, error = "Couldn’t refresh. Check the connection and retry.") }
         finally { mutable.value = mutable.value.copy(busy = false) }
     } } }
     fun loadDetails(page: String) { scope.launch { mutex.withLock {
@@ -41,12 +41,12 @@ internal class SettingsController private constructor(private val context: Conte
                 "accounts" -> mutable.value = mutable.value.copy(accounts = request("/admin/accounts"), quota = request("/admin/quota"))
                 "federation" -> mutable.value = mutable.value.copy(dkim = request("/admin/dkim"))
             }
-        } catch (_: Exception) { mutable.value = mutable.value.copy(error = "Couldn’t load this section. Refresh to try again.") }
+        } catch (_: Exception) { mutable.value = mutable.value.copy(error = "Couldn’t load. Refresh to retry.") }
         finally { mutable.value = mutable.value.copy(busy = false) }
     } } }
     fun save(setting: ServerSetting, value: String, reset: Boolean = false) {
         if (setting.kind == SettingKind.Managed || (!reset && setting.kind != SettingKind.Toggle && !setting.valid(value, remote == null))) {
-            mutable.value = mutable.value.copy(error = "Choose a valid value before saving.")
+            mutable.value = mutable.value.copy(error = "Enter a valid value.")
             return
         }
         val body = when {
@@ -60,7 +60,7 @@ internal class SettingsController private constructor(private val context: Conte
     }
     fun mutate(resource: String, method: String, body: JSONObject, restart: Boolean = false, success: String = "Saved.", refreshAccounts: Boolean = false) {
         scope.launch { mutex.withLock {
-            if (mutable.value.stale) { mutable.value = mutable.value.copy(error = "Refresh settings before making another change."); return@withLock }
+            if (mutable.value.stale) { mutable.value = mutable.value.copy(error = "Refresh before changing settings."); return@withLock }
             mutable.value = mutable.value.copy(busy = true, error = null, message = null)
             var written = false
             try {
@@ -74,8 +74,8 @@ internal class SettingsController private constructor(private val context: Conte
                 if (refreshAccounts) mutable.value = mutable.value.copy(accounts = request("/admin/accounts"), quota = request("/admin/quota"))
             } catch (e: Exception) {
                 if (!written && e is AdminRequestRejected && e.status in listOf(400, 401, 403, 404, 405, 422)) {
-                    mutable.value = mutable.value.copy(error = if (e.status == 400 || e.status == 422) "The server rejected this value. Check its format and try again." else "This operation is not available on the connected server (${e.status}).")
-                } else mutable.value = mutable.value.copy(stale = true, error = if (written) "Saved, but refreshed values are unavailable. Refresh before making another change." else "The change wasn’t confirmed and may have been applied. Refresh before trying again.")
+                    mutable.value = mutable.value.copy(error = if (e.status == 400 || e.status == 422) "The server rejected this value. Check its format." else "Not available on this server (${e.status}).")
+                } else mutable.value = mutable.value.copy(stale = true, error = if (written) "Saved, but couldn’t reload. Refresh before changing more." else "Not confirmed; it may have been applied. Refresh before retrying.")
             } finally { mutable.value = mutable.value.copy(busy = false) }
         } }
     }
@@ -90,7 +90,7 @@ internal class SettingsController private constructor(private val context: Conte
             val values = request("/admin/settings")
             prefs.edit().putBoolean("restart", false).apply()
             mutable.value = mutable.value.copy(values = values, stale = false, restartRequired = false, message = "Server restarted.")
-        } catch (_: Exception) { mutable.value = mutable.value.copy(stale = true, error = "Restart wasn’t confirmed. Check the server in Overview before trying again.") }
+        } catch (_: Exception) { mutable.value = mutable.value.copy(stale = true, error = "Restart not confirmed. Check Overview before retrying.") }
         finally { mutable.value = mutable.value.copy(busy = false) }
     } } }
     companion object {

@@ -5,42 +5,63 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.OpenInNew
-import androidx.compose.material.icons.outlined.*
+import androidx.compose.material.icons.automirrored.rounded.OpenInNew
+import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.FileProvider
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.MultiFormatWriter
 import kotlinx.coroutines.*
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.currentStateAsState
 import org.json.JSONObject
 import org.madmail.mobile.core.GuestAddresses
-import org.madmail.mobile.core.GuestNetwork
+import org.madmail.mobile.core.PhoneMailDomain
 import org.madmail.mobile.core.InviteLinks
 import org.madmail.mobile.core.RemoteServer
 import org.madmail.mobile.engine.*
 import java.io.File
-import java.net.URI
 import java.text.NumberFormat
 import java.time.Instant
 import java.time.ZoneId
@@ -53,7 +74,7 @@ private data class Invitation(val token: String, val name: String, val used: Int
     val active: Boolean get() = status == "active" && used + pending < limit && expiry?.isBefore(Instant.now()) != true
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun RegistrationScreen(serverId: String, serverName: String, remote: RemoteServer?, initialEndpoint: String, onEndpointChange: (String) -> Unit) {
     val context = LocalContext.current
@@ -73,6 +94,9 @@ internal fun RegistrationScreen(serverId: String, serverName: String, remote: Re
     var refresh by remember { mutableIntStateOf(0) }
     val creation = remember(serverId) { InvitationCreation.get(context, serverId, remote) }
     val creationState by creation.state.collectAsState()
+    val rotation = remember(serverId) { AccountQrRotation.get(context, serverId, remote) }
+    val rotationState by rotation.state.collectAsState()
+    val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
     var revoking by remember { mutableStateOf(false) }
     val busy = revoking || creationState.busy
     var error by remember { mutableStateOf<String?>(null) }
@@ -82,159 +106,262 @@ internal fun RegistrationScreen(serverId: String, serverName: String, remote: Re
     var editAddress by remember { mutableStateOf(false) }
     var large by remember { mutableStateOf(false) }
     var revoke by remember { mutableStateOf<Invitation?>(null) }
-    var copied by remember(code) { mutableStateOf(false) }
+    var copied by remember(code, rotationState.code) { mutableStateOf(false) }
     val numbers = remember { NumberFormat.getIntegerInstance() }
     suspend fun request(method: String, body: JSONObject = JSONObject()): JSONObject = withContext(Dispatchers.IO) {
         if (phone) local.invitationRequest(method, body) else ssh!!.invitationRequest(method, body)
     }
     fun select(value: String) { code = value; onEndpointChange(value) }
     LaunchedEffect(creationState.code) {
-        creationState.code?.let { select(it); creation.consume(); create = false; refresh++; notice = "Invitation created." }
+        creationState.code?.let { rotation.stop(); select(it); creation.consume(); create = false; refresh++; notice = "Invitation created." }
     }
     LaunchedEffect(copied) { if (copied) { delay(1800); copied = false } }
+    // A new account QR every few seconds, only while the code is in view: page on screen, no sheet over it, app in front, server ready.
+    val rotating = rotationState.active && ready && !create && !manage && !editAddress && lifecycleState.isAtLeast(Lifecycle.State.RESUMED)
+    LaunchedEffect(rotating) { if (rotating) rotation.resume() else rotation.pause() }
+    DisposableEffect(rotation) { onDispose { rotation.pause() } }
+    LaunchedEffect(ready) { if (ready) rotation.tidy() }
     LaunchedEffect(ready, refresh) {
         loaded = false
         if (!ready) return@LaunchedEffect
         do {
             try {
                 val array = request("GET").getJSONArray("tokens")
-                invitations = (0 until array.length()).map { array.getJSONObject(it) }.map {
+                val rotated = rotation.tokens()
+                invitations = (0 until array.length()).map { array.getJSONObject(it) }.filter { it.getString("token") !in rotated }.map {
                     Invitation(it.getString("token"), it.optString("comment").ifBlank { "Invitation" }, it.optInt("used_count"), it.optInt("pending_reservations"), it.getInt("max_uses"), it.getString("status"), it.optString("expires_at").takeUnless { s -> s.isBlank() || s == "null" })
                 }
                 loaded = true
             } catch (e: CancellationException) { throw e }
-            catch (_: Exception) { error = "Couldn’t load invitations. Check the server connection and refresh."; break }
+            catch (_: Exception) { error = "Couldn’t load invitations. Refresh to retry."; break }
             delay(30000)
         } while (isActive)
     }
-    val personal = code.startsWith("dclogin:", ignoreCase = true)
-    val selected = invitations.find { InviteLinks.origin(origin)?.let { base -> InviteLinks.invite(base, it.token) == code } == true }
-    val showCode = ready && code.isNotBlank() && (personal || loaded && selected?.active == true)
-    val bitmap = remember(code, showCode) { if (showCode) invitationBitmap(code) else null }
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    // Account QRs come only from the rotation; a stored dclogin link from before may already be deleted.
+    val shown = if (rotationState.active) rotationState.code.orEmpty() else code.takeUnless { it.startsWith("dclogin:", ignoreCase = true) }.orEmpty()
+    val personal = rotationState.active
+    val selected = if (personal) null else invitations.find { InviteLinks.origin(origin)?.let { base -> InviteLinks.invite(base, it.token) == shown } == true }
+    val showCode = ready && shown.isNotBlank() && (personal || loaded && selected?.active == true)
+    val bitmap = remember(shown, showCode) { if (showCode) invitationBitmap(shown) else null }
+    val canCreate = ready && !busy && !creationState.uncertain && InviteLinks.origin(origin) != null
+    // Copying or sharing hands the code out, so the rotation keeps that account instead of deleting it.
+    fun handOut() { if (personal) rotation.keep(rotationState.token) }
+    Column(Modifier.fillMaxWidth().animateContentSize(tween(300, easing = Emphasized)), verticalArrangement = Arrangement.spacedBy(24.dp)) {
         if (bitmap != null) {
-            Text(if (personal) "One person. One account." else selected!!.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-            Text(if (personal) "Scan in Delta Chat to set up this account." else "Scan with a camera to open the Madmail invitation.", style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
-            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                Surface(shape = RoundedCornerShape(20.dp), color = Color.White, modifier = Modifier.widthIn(max = 300.dp).fillMaxWidth().aspectRatio(1f).clickable(onClickLabel = "Enlarge QR code") { large = true }) {
-                    Image(bitmap.asImageBitmap(), "${if (personal) "Account" else "Invitation"} QR code for $serverName. Tap to enlarge.", Modifier.padding(12.dp))
+            Column {
+                Caption(if (personal) "Account QR" else "Invitation")
+                Group {
+                    Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(if (personal) "One person. One account." else selected!!.name, Modifier.semantics { heading() }, style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
+                        Text(if (personal) "Scan in Delta Chat." else "Scan with a camera.",
+                            style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant, textAlign = TextAlign.Center)
+                        Spacer(Modifier.height(12.dp))
+                        Box(Modifier.widthIn(max = 280.dp).fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(18.dp)).background(Color.White)
+                            .clickable(onClickLabel = "Enlarge QR code", role = Role.Button) { large = true }) {
+                            // A short crossfade so each new code reads as a refresh, not a flicker.
+                            Crossfade(bitmap, animationSpec = tween(180), label = "qr") { image ->
+                                Image(image.asImageBitmap(), "${if (personal) "Account" else "Invitation"} QR code for $serverName. Tap to enlarge.", Modifier.fillMaxSize().padding(12.dp))
+                            }
+                        }
+                        if (personal) RotationTimer(rotationState.issuedAt, Modifier.widthIn(max = 280.dp).fillMaxWidth().padding(top = 10.dp))
+                    }
+                    if (!personal) {
+                        RowDivider(16.dp)
+                        InvitationRows(selected!!, numbers)
+                    }
+                }
+                Footer(if (personal) "Contains a password. Give it to one person only." else "Revoking stops new sign-ups. Existing accounts stay.")
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    PillButton(if (copied) "Copied" else "Copy", onClick = {
+                        handOut()
+                        val clip = ClipData.newPlainText("Madmail invitation", shown)
+                        if (android.os.Build.VERSION.SDK_INT >= 33) clip.description.extras = android.os.PersistableBundle().apply { putBoolean("android.content.extra.IS_SENSITIVE", true) }
+                        (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(clip)
+                        copied = true
+                    }, Modifier.weight(1f), icon = if (copied) Icons.Rounded.Check else Icons.Rounded.ContentCopy, filled = true, wide = true)
+                    PillButton("Share", onClick = {
+                        handOut()
+                        context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, shown) }, "Share invitation"))
+                    }, Modifier.weight(1f), icon = Icons.Rounded.Share, wide = true)
+                }
+                Group {
+                    if (personal) {
+                        ActionRow("Open in Delta Chat", onClick = {
+                            handOut()
+                            runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(shown))) }
+                                .onFailure { error = "Install Delta Chat, or scan on another device." }
+                        }, icon = Icons.AutoMirrored.Rounded.OpenInNew)
+                        RowDivider(48.dp)
+                    }
+                    ActionRow("Enlarge", onClick = { large = true }, icon = Icons.Rounded.Fullscreen)
+                    RowDivider(48.dp)
+                    ActionRow("Share QR image", onClick = { handOut(); runCatching { shareInvitationImage(context, bitmap) }.onFailure { error = "Couldn’t share the QR image." } }, icon = Icons.Rounded.Image)
+                    RowDivider(48.dp)
+                    ActionRow(if (personal) "Stop" else "Hide", onClick = { if (personal) rotation.stop() else select("") }, icon = Icons.Rounded.VisibilityOff)
                 }
             }
-            if (!personal) InvitationSummary(selected!!, numbers)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Button(onClick = {
-                    val clip = ClipData.newPlainText("Madmail invitation", code)
-                    if (android.os.Build.VERSION.SDK_INT >= 33) clip.description.extras = android.os.PersistableBundle().apply { putBoolean("android.content.extra.IS_SENSITIVE", true) }
-                    (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(clip)
-                    copied = true
-                }, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) { Icon(if (copied) Icons.Outlined.Check else Icons.Outlined.ContentCopy, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text(if (copied) "Copied" else "Copy") }
-                OutlinedButton(onClick = {
-                    context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, code) }, "Share invitation"))
-                }, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) { Icon(Icons.Outlined.Share, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Share") }
+        } else if (personal && ready) Column {
+            Caption("Account QR")
+            Group {
+                InfoRow(Tint.Purple, Icons.Rounded.QrCode2, "Preparing account QR…", rotationState.error) {
+                    CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                }
             }
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (personal) TextButton(onClick = {
-                    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(code))) }
-                        .onFailure { error = "Install Delta Chat to open this account here, or scan the QR on another device." }
-                }) { Icon(Icons.AutoMirrored.Outlined.OpenInNew, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Open in Delta Chat") }
-                TextButton(onClick = { large = true }) { Icon(Icons.Outlined.Fullscreen, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Enlarge") }
-                TextButton(onClick = { runCatching { shareInvitationImage(context, bitmap) }.onFailure { error = "Couldn’t share the QR image." } }) { Icon(Icons.Outlined.Image, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Share QR") }
-                TextButton(onClick = { select("") }) { Icon(Icons.Outlined.VisibilityOff, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Hide") }
-            }
-            Text(if (personal) "This QR contains an account password. Give it to one person only. Hiding it does not delete the account." else "Each guest creates their own account. Revoking this invitation stops new sign-ups; existing accounts stay active.", style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
         } else {
-            Icon(Icons.Outlined.QrCode2, null, Modifier.size(44.dp), tint = colors.primary)
-            Text(if (!ready) "Bring your server online" else "Invite someone in", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
-            Text(if (!ready) if (phone) "Start hosting from Overview to create invitations." else "Connect to this server from Overview to create invitations." else if (code.isNotBlank()) "This invitation is unavailable or has expired. Choose another invitation or create a new one." else "Create a link for guests, or an account QR for one person.", color = colors.onSurfaceVariant)
-        }
-        HorizontalDivider(color = colors.outlineVariant)
-        Row(Modifier.fillMaxWidth().clickable(enabled = !busy) { editAddress = true }.heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Icon(Icons.Outlined.Link, null, tint = colors.primary)
-            Column(Modifier.weight(1f)) {
-                Text("Guest-facing address", style = MaterialTheme.typography.labelMedium, color = colors.onSurfaceVariant)
-                Text(origin.ifBlank { "Choose an address" }, style = MaterialTheme.typography.bodyMedium)
+            val title = if (!ready) "Server offline" else "Invite someone"
+            val body = if (!ready) if (phone) "Start hosting from Overview." else "Connect from Overview." else if (shown.isNotBlank()) "This invitation is unavailable. Choose or create another." else "Share a link or an account QR."
+            Column(Modifier.fillMaxWidth().padding(horizontal = 4.dp)) {
+                TintIcon(Tint.Purple, Icons.Rounded.QrCode2, size = 56.dp)
+                Spacer(Modifier.height(18.dp))
+                Text(title, Modifier.semantics { heading() }, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.3).sp)
+                Spacer(Modifier.height(8.dp))
+                Text(body, style = MaterialTheme.typography.bodyLarge, color = colors.onSurfaceVariant)
             }
-            Icon(Icons.Outlined.Edit, "Edit guest-facing address", Modifier.size(20.dp))
         }
-        if (phone) Text("Use Wi-Fi or hotspot for nearby guests, or a VPN / Tailscale address for guests on that network. Update this address when the network changes.", style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
-        if (bitmap == null) {
-            Button(onClick = {
-                error = null; notice = null
-                prefs.edit().putString("origin", origin).apply()
-                creation.create(origin, true, 1, "", "24h")
-            }, enabled = ready && !busy && !creationState.uncertain && InviteLinks.origin(origin) != null,
-                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                Icon(Icons.Outlined.QrCode2, null); Spacer(Modifier.width(8.dp)); Text("Generate connection QR")
+        Column {
+            Caption("Guest address")
+            Group {
+                Box(Modifier.fillMaxWidth().clickable(enabled = !busy, role = Role.Button, onClickLabel = "Edit guest address") { editAddress = true }) {
+                    InfoRow(Tint.Teal, Icons.Rounded.Link, "Address", origin.ifBlank { "Choose an address" }) {
+                        Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) { Icon(Icons.Rounded.Edit, null, Modifier.size(20.dp), tint = colors.onSurfaceVariant) }
+                    }
+                }
             }
-            Text("Creates a random account for one person. Scan in Delta Chat on their device. Complete first sign-in within 1 day. The QR contains its password and trusts this server’s self-signed certificate.", style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
+            if (phone) Footer("Update it when the network changes.")
         }
-        OutlinedButton(onClick = { create = true }, enabled = ready && !busy && !creationState.uncertain && InviteLinks.origin(origin) != null, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Icon(Icons.Outlined.Add, null); Spacer(Modifier.width(8.dp)); Text("Create invitation") }
-        TextButton(onClick = { manage = true }, enabled = ready, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.ConfirmationNumber, null, Modifier.size(20.dp)); Spacer(Modifier.width(8.dp)); Text(if (loaded) "Manage invitations · ${numbers.format(invitations.size)}" else "Manage invitations") }
-        if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-        notice?.let { Text(it, color = colors.primary, style = MaterialTheme.typography.bodyMedium) }
-        error?.let { Text(it, color = colors.error, style = MaterialTheme.typography.bodyMedium) }
-        creationState.error?.let { Text(it, color = colors.error, style = MaterialTheme.typography.bodyMedium) }
+        Column {
+            if (!personal) {
+                PillButton("Show account QR", onClick = {
+                    error = null; notice = null
+                    prefs.edit().putString("origin", origin).apply()
+                    select(""); rotation.start(origin)
+                }, icon = Icons.Rounded.QrCode2, filled = canCreate, enabled = canCreate, wide = true)
+                Footer("Each QR holds a password and trusts this server’s self-signed certificate.")
+                Spacer(Modifier.height(16.dp))
+            }
+            PillButton("Create invitation", onClick = { create = true }, icon = Icons.Rounded.Add, enabled = canCreate, wide = true)
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Group {
+                NavRow({ TintIcon(Tint.Purple, Icons.Rounded.ConfirmationNumber) }, "Invitations", value = if (loaded) numbers.format(invitations.size) else null,
+                    enabled = ready) { manage = true }
+            }
+            if (busy) InviteProgress()
+            notice?.let { InviteStatus(Tint.Green, Icons.Rounded.Check, it) }
+            error?.let { InviteStatus(Tint.Red, Icons.Rounded.PriorityHigh, it) }
+            creationState.error?.let { InviteStatus(Tint.Red, Icons.Rounded.PriorityHigh, it) }
+            if (bitmap != null) rotationState.error?.let { InviteStatus(Tint.Orange, Icons.Rounded.PriorityHigh, it) }
+        }
     }
     if (editAddress) GuestAddressSheet(origin, remote, onDismiss = { editAddress = false }) { updated ->
-        val updatedCode = if (personal) InviteLinks.login(code, updated) else selected?.let { InviteLinks.invite(updated, it.token) }.orEmpty()
         origin = updated; prefs.edit().putString("origin", origin).apply()
-        select(updatedCode); editAddress = false; notice = "Guest address updated. Share the updated QR code."
+        if (personal) rotation.retarget(updated) else select(selected?.let { InviteLinks.invite(updated, it.token) }.orEmpty())
+        editAddress = false; notice = "Address updated."
+        // New accounts take this IP as their domain, so the phone server restarts onto it when it changed.
+        val host = java.net.URI(updated).host
+        if (phone && GuestAddresses.ipv4(host)) scope.launch(Dispatchers.IO) {
+            val before = local.mailHost
+            runCatching { local.useMailHost(host) }
+                .onSuccess { switched -> if (!switched) error = "Couldn’t switch to $host. Check this phone’s network."
+                    else if (before != host && local.mailHost == host) notice = "Hosting restarted on $host." }
+                .onFailure { error = it.message ?: "Couldn’t restart hosting. Start it from Overview." }
+        }
     }
     if (create) {
         var account by remember { mutableStateOf(true) }
         var title by remember { mutableStateOf("") }
         var uses by remember { mutableStateOf("1") }
         var expiry by remember { mutableStateOf("24h") }
-        ModalBottomSheet(sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), onDismissRequest = { if (!busy) create = false }) {
-            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text("New invitation", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(account, { account = true }, label = { Text("Account QR") }, leadingIcon = { Icon(Icons.Outlined.PersonAdd, null, Modifier.size(18.dp)) }, enabled = !busy)
-                    FilterChip(!account, { account = false }, label = { Text("Browser link") }, leadingIcon = { Icon(Icons.Outlined.Link, null, Modifier.size(18.dp)) }, enabled = !busy)
+        val focus = LocalFocusManager.current
+        val fields = remember { List(2) { FocusRequester() } }
+        KitSheet(onDismiss = { if (!busy) create = false }) {
+            SheetHeader("New invitation", mark = { TintIcon(Tint.Purple, if (account) Icons.Rounded.PersonAdd else Icons.Rounded.Link, size = 40.dp) })
+            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = GroupGutter).padding(bottom = 32.dp)
+                .animateContentSize(tween(300, easing = Emphasized))) {
+                Caption("Type")
+                Group {
+                    InviteCheckRow("Account QR", null, account, !busy, { TintIcon(Tint.Purple, Icons.Rounded.PersonAdd, size = 40.dp) }) { account = true }
+                    RowDivider(70.dp)
+                    InviteCheckRow("Browser link", null, !account, !busy, { TintIcon(Tint.Teal, Icons.Rounded.Link, size = 40.dp) }) { account = false }
                 }
-                Text(if (account) "Create one account now. Its QR includes the IMAP and SMTP settings for Delta Chat." else "Guests open this in a browser. The server must advertise a reachable mail hostname.", color = colors.onSurfaceVariant)
-                OutlinedTextField(title, { title = it.take(120) }, label = { Text("Label (optional)") }, singleLine = true, modifier = Modifier.fillMaxWidth(), enabled = !busy)
-                if (!account) OutlinedTextField(uses, { uses = it.filter(Char::isDigit).take(6) }, label = { Text("Maximum people") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true, modifier = Modifier.fillMaxWidth(), enabled = !busy)
-                Text(if (account) "Complete first sign-in within" else "Invitation expires after", style = MaterialTheme.typography.labelLarge)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("1h" to "1 hour", "24h" to "1 day", "168h" to "7 days", "" to "Never").forEach { (value, label) -> FilterChip(expiry == value, { expiry = value }, label = { Text(label) }, enabled = !busy) }
+                Footer(if (account) "A new QR every 5 seconds, for Delta Chat." else "Guests open it in a browser.")
+                Spacer(Modifier.height(24.dp))
+                Caption("Details")
+                Group {
+                    FieldRow("Label", title, { if (!busy) title = it.take(120) }, "Optional", fields[0],
+                        fieldKeyboard(KeyboardType.Text, if (account) ImeAction.Done else ImeAction.Next), { if (account) focus.clearFocus() else fields[1].requestFocus() })
+                    if (!account) {
+                        RowDivider(16.dp)
+                        FieldRow("Max people", uses, { if (!busy) uses = it.filter(Char::isDigit).take(6) }, "1", fields[1],
+                            fieldKeyboard(KeyboardType.Number, ImeAction.Done), { focus.clearFocus() })
+                    }
                 }
-                Text(if (account) "The managed server uses a self-signed certificate. This QR allows it in Delta Chat; share only with people who trust this server." else "With a self-signed certificate, browsers may ask guests to trust the server first.", style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
-                if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-                error?.let { Text(it, color = colors.error) }
-                creationState.error?.let { Text(it, color = colors.error) }
-                if (creationState.uncertain) TextButton(onClick = { create = false; manage = true; refresh++ }) { Text("Review invitations") }
-                Button(enabled = !busy && !creationState.uncertain && (account || (uses.toIntOrNull() ?: 0) in 1..999999), onClick = {
+                Spacer(Modifier.height(24.dp))
+                Caption(if (account) "Sign in within" else "Expires after")
+                Group {
+                    listOf("1h" to "1 hour", "24h" to "1 day", "168h" to "7 days", "" to "Never").forEachIndexed { index, (value, label) ->
+                        if (index > 0) RowDivider(16.dp)
+                        InviteCheckRow(label, null, expiry == value, !busy) { expiry = value }
+                    }
+                }
+                Footer(if (account) "The QR trusts this server’s self-signed certificate." else "Browsers may warn about the self-signed certificate.")
+                Column(Modifier.padding(top = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    if (busy) InviteProgress()
+                    error?.let { InviteStatus(Tint.Red, Icons.Rounded.PriorityHigh, it) }
+                    creationState.error?.let { InviteStatus(Tint.Red, Icons.Rounded.PriorityHigh, it) }
+                    if (creationState.uncertain) PillButton("Review invitations", onClick = { create = false; manage = true; refresh++ }, wide = true)
+                }
+                Spacer(Modifier.height(20.dp))
+                BrandButton(if (account) "Create account QR" else "Create invite link", enabled = !busy && !creationState.uncertain && (account || (uses.toIntOrNull() ?: 0) in 1..999999)) {
                     error = null; notice = null
                     prefs.edit().putString("origin", origin).apply()
-                    creation.create(origin, account, uses.toIntOrNull() ?: 1, title, expiry)
-                }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Icon(if (account) Icons.Outlined.PersonAdd else Icons.Outlined.QrCode2, null); Spacer(Modifier.width(8.dp)); Text(if (account) "Create account QR" else "Create invite link") }
-            }
-        }
-    }
-    if (manage) ModalBottomSheet(sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), onDismissRequest = { manage = false }) {
-        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("Invitations", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                IconButton(onClick = { error = null; refresh++ }, enabled = !busy) { Icon(Icons.Outlined.Refresh, "Refresh invitations") }
-            }
-            if (!loaded) Text("Invitations haven’t loaded yet.")
-            else if (invitations.isEmpty()) Text("No invitations yet.", color = colors.onSurfaceVariant)
-            error?.let { Text(it, color = colors.error) }
-            if (creationState.uncertain && loaded) TextButton(onClick = { creation.reviewed() }) { Text("I’ve checked invitations and accounts") }
-            invitations.forEach { invitation ->
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Column(Modifier.weight(1f).clickable(enabled = invitation.active && InviteLinks.origin(origin) != null && !busy, onClickLabel = "Show invitation QR") { select(InviteLinks.invite(origin, invitation.token)); manage = false }.padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(invitation.name, style = MaterialTheme.typography.titleMedium)
-                        InvitationSummary(invitation, numbers)
-                    }
-                    IconButton(onClick = { revoke = invitation }, enabled = !busy) { Icon(Icons.Outlined.DeleteOutline, "Revoke ${invitation.name}", tint = colors.error) }
+                    if (account) { select(""); rotation.start(origin, title, expiry); create = false }
+                    else creation.create(origin, false, uses.toIntOrNull() ?: 1, title, expiry)
                 }
-                HorizontalDivider(color = colors.outlineVariant)
             }
         }
     }
-    revoke?.let { invitation -> AlertDialog(onDismissRequest = { if (!busy) revoke = null }, title = { Text("Revoke ${invitation.name}?") }, text = { Text("Guests won’t be able to use this invitation. Accounts already created remain active.") }, confirmButton = {
+    if (manage) KitSheet(onDismiss = { manage = false }) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+            Box(Modifier.weight(1f)) { SheetHeader("Invitations", serverName,
+                mark = { TintIcon(Tint.Purple, Icons.Rounded.ConfirmationNumber, size = 40.dp) }) }
+            IconButton(onClick = { error = null; refresh++ }, enabled = !busy, modifier = Modifier.padding(top = 4.dp, end = 12.dp)) {
+                Icon(Icons.Rounded.Refresh, "Refresh invitations", tint = colors.onSurfaceVariant)
+            }
+        }
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = GroupGutter).padding(bottom = 32.dp)
+            .animateContentSize(tween(300, easing = Emphasized)), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (!loaded) Group { InfoRow(Tint.Gray, Icons.Rounded.HourglassEmpty, "Not loaded") }
+            else if (invitations.isEmpty()) Group { InfoRow(Tint.Gray, Icons.Rounded.ConfirmationNumber, "No invitations") }
+            error?.let { InviteStatus(Tint.Red, Icons.Rounded.PriorityHigh, it) }
+            if (creationState.uncertain && loaded) PillButton("I’ve checked", onClick = { creation.reviewed() }, wide = true)
+            if (invitations.isNotEmpty()) Group {
+                invitations.forEachIndexed { index, invitation ->
+                    if (index > 0) RowDivider(60.dp)
+                    Row(Modifier.fillMaxWidth().padding(end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Row(Modifier.weight(1f).clickable(enabled = invitation.active && InviteLinks.origin(origin) != null && !busy, onClickLabel = "Show invitation QR") {
+                                rotation.stop(); select(InviteLinks.invite(origin, invitation.token)); manage = false
+                            }.heightIn(min = 60.dp).padding(start = 14.dp, top = 12.dp, bottom = 12.dp, end = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                            TintIcon(if (invitation.active) Tint.Purple else Tint.Gray, Icons.Rounded.ConfirmationNumber)
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(invitation.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                                InvitationSummary(invitation, numbers)
+                            }
+                        }
+                        IconButton(onClick = { revoke = invitation }, enabled = !busy) { Icon(Icons.Rounded.DeleteOutline, "Revoke ${invitation.name}", tint = colors.error) }
+                    }
+                }
+            }
+        }
+    }
+    revoke?.let { invitation -> AlertDialog(onDismissRequest = { if (!busy) revoke = null }, containerColor = panelColor(), shape = RoundedCornerShape(28.dp),
+        icon = { TintIcon(Tint.Red, Icons.Rounded.DeleteOutline, size = 40.dp) },
+        title = { Text("Revoke ${invitation.name}?", fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center) },
+        text = { Text("New sign-ups stop. Existing accounts stay.", color = colors.onSurfaceVariant) }, confirmButton = {
         TextButton(enabled = !busy, onClick = {
             revoking = true
             scope.launch {
@@ -243,32 +370,67 @@ internal fun RegistrationScreen(serverId: String, serverName: String, remote: Re
                     if (selected?.token == invitation.token) select("")
                     notice = "Invitation revoked."; revoke = null; refresh++
                 } catch (e: CancellationException) { throw e }
-                catch (_: Exception) { error = "Revocation wasn’t confirmed. Refresh to check its status."; revoke = null; refresh++ }
+                catch (_: Exception) { error = "Revoke not confirmed. Refresh to check."; revoke = null; refresh++ }
                 finally { revoking = false }
             }
-        }) { Text("Revoke", color = colors.error) }
-    }, dismissButton = { TextButton(onClick = { revoke = null }, enabled = !busy) { Text("Cancel") } }) }
+        }) { Text("Revoke", color = colors.error, fontWeight = FontWeight.SemiBold) }
+    }, dismissButton = { TextButton(onClick = { revoke = null }, enabled = !busy) { Text("Cancel", fontWeight = FontWeight.SemiBold) } }) }
     if (large && bitmap != null) Dialog(onDismissRequest = { large = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         val view = LocalView.current
         DisposableEffect(view) { val previous = view.keepScreenOn; view.keepScreenOn = true; onDispose { view.keepScreenOn = previous } }
-        Surface(Modifier.fillMaxWidth().padding(16.dp), shape = RoundedCornerShape(24.dp), color = Color.White, contentColor = Color.Black) {
-            Column(Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text(serverName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                Image(bitmap.asImageBitmap(), "QR code for $serverName", Modifier.fillMaxWidth().aspectRatio(1f))
-                Text(if (personal) "Scan in Delta Chat · One person only" else "Scan with your camera", style = MaterialTheme.typography.bodyMedium)
-                TextButton(onClick = { large = false }) { Text("Close") }
-            }
+        Column(Modifier.fillMaxWidth().padding(16.dp).clip(RoundedCornerShape(28.dp)).background(Color.White).padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Text(serverName, Modifier.semantics { heading() }, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, color = Color.Black)
+            Image(bitmap.asImageBitmap(), "QR code for $serverName", Modifier.fillMaxWidth().aspectRatio(1f))
+            Text(if (personal) "Scan in Delta Chat · One person only" else "Scan with your camera", style = MaterialTheme.typography.bodyMedium, color = Color.Black.copy(alpha = 0.6f))
+            PillButton("Close", onClick = { large = false }, wide = true)
         }
     }
+}
+
+/** A selectable row with a check, for one-of-many choices inside a group. */
+@Composable
+private fun InviteCheckRow(title: String, detail: String?, selected: Boolean, enabled: Boolean, mark: (@Composable () -> Unit)? = null, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().selectable(selected, enabled, Role.RadioButton, onClick).heightIn(min = if (mark != null) 68.dp else 52.dp)
+        .padding(start = if (mark != null) 14.dp else 16.dp, end = 16.dp, top = 10.dp, bottom = 10.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        mark?.invoke()
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(title, style = if (mark != null) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodyLarge,
+                fontWeight = if (mark != null) FontWeight.SemiBold else FontWeight.Normal)
+            detail?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        }
+        if (selected) SelectedCheck()
+    }
+}
+
+/** A short status line: a small mark for its meaning, then the message. */
+@Composable
+private fun InviteStatus(tint: Tint, icon: ImageVector, text: String, size: Dp = 22.dp) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        TintIcon(tint, icon, size = size)
+        Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun InviteProgress() = LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 16.dp).clip(RoundedCornerShape(2.dp)),
+    color = MaterialTheme.colorScheme.primary, strokeCap = StrokeCap.Round)
+
+@Composable
+private fun InvitationRows(invitation: Invitation, numbers: NumberFormat) {
+    ValueRow("Used", "${numbers.format(invitation.used)} of ${numbers.format(invitation.limit)}${if (invitation.pending > 0) " · ${numbers.format(invitation.pending)} pending" else ""}")
+    RowDivider(16.dp)
+    ValueRow("Status", invitation.statusLabel, valueColor = if (invitation.active) successText() else MaterialTheme.colorScheme.onSurfaceVariant)
+    RowDivider(16.dp)
+    ValueRow("Expires", invitation.expiry?.atZone(ZoneId.systemDefault())?.format(DateTimeFormatter.ofLocalizedDateTime(FormatStyle.SHORT)) ?: "No expiry")
 }
 
 @Composable
 private fun InvitationSummary(invitation: Invitation, numbers: NumberFormat) {
     val expires = invitation.expiry?.atZone(ZoneId.systemDefault())?.format(DateTimeFormatter.ofLocalizedDateTime(FormatStyle.SHORT)) ?: "No expiry"
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text("${numbers.format(invitation.used)} / ${numbers.format(invitation.limit)} used${if (invitation.pending > 0) " · ${numbers.format(invitation.pending)} pending" else ""}", style = MaterialTheme.typography.bodyMedium)
-        Text("${invitation.statusLabel} · $expires", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
+    Text("${numbers.format(invitation.used)} / ${numbers.format(invitation.limit)} used${if (invitation.pending > 0) " · ${numbers.format(invitation.pending)} pending" else ""} · ${invitation.statusLabel} · $expires",
+        style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 private fun invitationBitmap(payload: String): Bitmap? = runCatching {
@@ -278,8 +440,19 @@ private fun invitationBitmap(payload: String): Bitmap? = runCatching {
     }
 }.getOrNull()
 
-private fun localInviteOrigin(context: Context): String = GuestNetworks.phone(context)
-    .firstOrNull { it.network != GuestNetwork.Vpn }?.origin.orEmpty()
+private fun localInviteOrigin(context: Context): String = PhoneMailDomain.preferred(GuestNetworks.phone(context))?.origin.orEmpty()
+
+/** A bar that empties over one rotation period, restarting with each new code. */
+@Composable
+private fun RotationTimer(issuedAt: Long, modifier: Modifier = Modifier) {
+    val progress = remember { Animatable(1f) }
+    LaunchedEffect(issuedAt) {
+        progress.snapTo(1f)
+        progress.animateTo(0f, tween(AccountQrRotation.PERIOD.toInt(), easing = LinearEasing))
+    }
+    LinearProgressIndicator(progress = { progress.value }, modifier = modifier.height(4.dp).clip(CircleShape).clearAndSetSemantics { },
+        color = brandRed(), trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f), strokeCap = StrokeCap.Round, gapSize = 0.dp, drawStopIndicator = {})
+}
 
 private fun shareInvitationImage(context: Context, bitmap: Bitmap) {
     val dir = File(context.cacheDir, "invite-share").apply { mkdirs() }

@@ -5,6 +5,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.json.JSONObject
+import org.madmail.mobile.core.GuestAddresses
 import org.madmail.mobile.core.InviteLinks
 import org.madmail.mobile.core.RemoteServer
 
@@ -24,14 +25,21 @@ internal class InvitationCreation private constructor(context: Context, remote: 
             var token: String? = null
             var mutationStarted = false
             try {
+                val originHost = java.net.URI(origin).host.removeSurrounding("[", "]")
+                // The phone server takes the chosen IP as its mail domain before anything is created.
+                if (ssh == null && GuestAddresses.ipv4(originHost) && !local.useMailHost(originHost)) {
+                    mutable.value = CreationState(error = "Hosting couldn’t switch to $originHost. Check the phone’s address.")
+                    return@launch
+                }
                 if (!account) {
-                    val host = if (ssh != null) ssh.browserInviteHost(origin) else local.browserInviteHost(origin)
-                    if (host == null || host in listOf("madmail.local", "localhost", "127.0.0.1")) {
-                        mutable.value = CreationState(error = "This server’s browser invitation page does not advertise a guest-ready mail address. Choose Account QR to use your selected Wi-Fi, VPN or server address.")
+                    val host = (if (ssh != null) ssh.browserInviteHost(origin) else local.browserInviteHost(origin))?.removeSurrounding("[", "]")
+                    if (host == null || host in listOf("localhost", "127.0.0.1") || !host.equals(originHost, ignoreCase = true)) {
+                        mutable.value = CreationState(error = "Invitations use ${host ?: "no address"}, not $originHost. Choose Account QR or switch address.")
                         return@launch
                     }
                 }
-                val body = JSONObject().put("max_uses", if (account) 1 else uses).put("comment", title.ifBlank { if (account) "Personal account" else "Invitation" }).apply { if (expiry.isNotBlank()) put("expires_in", expiry) }
+                // An account token gets spare uses so IMAP and SMTP can finish their first logins in parallel.
+                val body = JSONObject().put("max_uses", if (account) 5 else uses).put("comment", title.ifBlank { if (account) "Personal account" else "Invitation" }).apply { if (expiry.isNotBlank()) put("expires_in", expiry) }
                 mutationStarted = true
                 token = (ssh?.invitationRequest("POST", body) ?: local.invitationRequest("POST", body)).getString("token")
                 val code = if (account) {
@@ -43,12 +51,12 @@ internal class InvitationCreation private constructor(context: Context, remote: 
                 if (e is CancellationException) throw e
                 val rejected = e is AdminRequestRejected && e.status in listOf(400, 401, 403, 404, 405, 422, 429)
                 val detail = if (rejected) when ((e as AdminRequestRejected).status) {
-                    403 -> "Registration is blocked by this server. Check Registration settings."
-                    429 -> "The server is limiting requests. Wait before trying again."
-                    400, 422 -> "The server rejected these invitation details. Check the values."
-                    else -> "The server rejected this operation (${e.status}). Reconnect and check its settings."
-                } else "The result wasn’t confirmed. Check invitations and accounts before trying again; the server may have completed it."
-                mutable.value = CreationState(error = if (!mutationStarted) "Couldn’t check the server’s browser invitation page. Reconnect or choose Account QR." else (if (token != null) "The invitation was created, but the account QR could not be completed. Find the token in Manage invitations. " else "") + detail, uncertain = mutationStarted && !rejected)
+                    403 -> "Registration blocked. Check Registration settings."
+                    429 -> "Too many requests. Try again later."
+                    400, 422 -> "The server rejected these values. Check them."
+                    else -> "The server rejected this (${e.status}). Reconnect and check settings."
+                } else "Not confirmed; it may have gone through. Check invitations before retrying."
+                mutable.value = CreationState(error = if (!mutationStarted) "Couldn’t use this address. Reconnect or restart hosting. Choose Account QR instead." else (if (token != null) "Invitation created, but the account QR failed. Find it in Invitations. " else "") + detail, uncertain = mutationStarted && !rejected)
             }
         }
     }

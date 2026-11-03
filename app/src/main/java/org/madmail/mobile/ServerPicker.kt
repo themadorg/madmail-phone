@@ -1,54 +1,67 @@
 package org.madmail.mobile
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.*
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.madmail.mobile.core.RemoteServer
 import org.madmail.mobile.core.ServerIdentity
 
+/** A server's squircle: red for this phone, blue for a remote server, carrying the chosen icon or emoji. */
 @Composable
-internal fun ServerMark(mark: String, phone: Boolean, modifier: Modifier = Modifier, compact: Boolean = false) {
-    val icon = when (mark) {
-        "cloud" -> Icons.Outlined.Cloud
-        "home" -> Icons.Outlined.Home
-        "globe" -> Icons.Outlined.Public
-        "storage" -> Icons.Outlined.Storage
-        "shield" -> Icons.Outlined.Shield
-        else -> if (phone) Icons.Outlined.PhoneAndroid else Icons.Outlined.Dns
+internal fun ServerMark(mark: String, phone: Boolean, modifier: Modifier = Modifier, compact: Boolean = false, size: Dp = 40.dp) {
+    val side = if (compact) 26.dp else size
+    val tint = if (phone) Tint.Red else Tint.Blue
+    Box(modifier.size(side).clip(RoundedCornerShape(side * 0.28f)).background(Brush.verticalGradient(listOf(Color(tint.top), Color(tint.bottom)))),
+        contentAlignment = Alignment.Center) {
+        if (mark.startsWith("emoji:")) Text(mark.removePrefix("emoji:"), fontSize = (side.value * 0.52f).sp, maxLines = 1)
+        else Icon(markIcon(mark, phone), null, Modifier.size(side * 0.56f), tint = Color.White)
     }
-    val emoji = mark.startsWith("emoji:")
-    Box(modifier.size(if (compact) 26.dp else 48.dp).clip(RoundedCornerShape(if (compact) 8.dp else 16.dp))
-        .background(if (compact) androidx.compose.ui.graphics.Color.Transparent else MaterialTheme.colorScheme.secondaryContainer), contentAlignment = Alignment.Center) {
-        if (emoji) Text(mark.removePrefix("emoji:"), fontSize = if (compact) 21.sp else 26.sp, maxLines = 1)
-        else Icon(icon, null, Modifier.size(if (compact) 24.dp else 25.dp), tint = MaterialTheme.colorScheme.onSecondaryContainer)
-    }
+}
+
+private fun markIcon(mark: String, phone: Boolean) = when (mark) {
+    "cloud" -> Icons.Rounded.Cloud
+    "home" -> Icons.Rounded.Home
+    "globe" -> Icons.Rounded.Public
+    "storage" -> Icons.Rounded.Storage
+    "shield" -> Icons.Rounded.Shield
+    else -> if (phone) Icons.Rounded.PhoneAndroid else Icons.Rounded.Dns
 }
 
 @Composable
@@ -72,45 +85,72 @@ internal fun ServerPicker(selectedId: String, remotes: List<RemoteServer>, ident
             }
         }
     } else {
-        Column(Modifier.fillMaxWidth().imePadding().padding(horizontal = 16.dp).padding(bottom = 16.dp)) {
-            if (entries.size > 5) OutlinedTextField(query, { query = it }, placeholder = { Text("Find a server") }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp))
-            val visible = entries.filter { (id, host, address) -> "${identities[id]?.name.orEmpty()} $host $address".contains(query, ignoreCase = true) }
-            Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()).selectableGroup()) {
-                visible.forEach { (id, fallback, address) ->
-                    val identity = identities[id] ?: ServerIdentity()
-                    val selected = id == selectedId
-                    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
-                        .background(if (selected && !editMode) MaterialTheme.colorScheme.primaryContainer.copy(alpha = .35f) else androidx.compose.ui.graphics.Color.Transparent)
-                        .selectable(selected = selected && !editMode, role = if (editMode) Role.Button else Role.RadioButton, onClick = { if (editMode) editing = id else onSelect(id) })
-                        .padding(horizontal = 12.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        ServerMark(identity.mark, id == "phone")
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                            Text(identity.name.ifBlank { fallback }, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(if (editMode) "Change name and icon" else address, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Column(Modifier.fillMaxWidth().imePadding().animateContentSize(tween(300, easing = Emphasized)).padding(bottom = 24.dp)) {
+            SheetHeader("Servers")
+            Column(Modifier.fillMaxWidth().padding(horizontal = GroupGutter)) {
+                if (entries.size > 5) {
+                    SearchGroup(query) { query = it }
+                    Spacer(Modifier.height(16.dp))
+                }
+                val visible = entries.filter { (id, host, address) -> "${identities[id]?.name.orEmpty()} $host $address".contains(query, ignoreCase = true) }
+                Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
+                    Group(Modifier.selectableGroup()) {
+                        visible.forEach { (id, fallback, address) ->
+                            val identity = identities[id] ?: ServerIdentity()
+                            ServerRow(identity, id == "phone", identity.name.ifBlank { fallback }, if (editMode) "Name and icon" else address,
+                                selected = id == selectedId, editMode = editMode) { if (editMode) editing = id else onSelect(id) }
+                            RowDivider(60.dp)
                         }
-                        if (editMode) Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, "Edit appearance", Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                        else if (selected) Icon(Icons.Outlined.CheckCircle, "Current server", Modifier.size(22.dp), tint = MaterialTheme.colorScheme.primary)
+                        NavRow({ TintIcon(Tint.Red, Icons.Rounded.Add) }, "Set up a server", onClick = onAdd)
                     }
+                    if (visible.isEmpty()) Footer("No matches")
                 }
-                if (visible.isEmpty()) Text("No servers match “$query”", Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            HorizontalDivider(Modifier.padding(top = 12.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .5f))
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = onAdd, modifier = Modifier.weight(1f).heightIn(min = 52.dp), contentPadding = PaddingValues(12.dp)) {
-                    Icon(Icons.Outlined.AddCircleOutline, null, Modifier.size(24.dp)); Spacer(Modifier.width(12.dp)); Text("Set up a server", Modifier.weight(1f))
-                }
-                IconButton(onClick = { editMode = !editMode }) {
-                    Icon(if (editMode) Icons.Outlined.Check else Icons.Outlined.Edit,
-                        if (editMode) "Finish editing servers" else "Edit server appearance",
-                        tint = if (editMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.End) {
+                    PillButton(if (editMode) "Done" else "Edit", { editMode = !editMode }, icon = if (editMode) Icons.Rounded.Check else Icons.Rounded.Edit)
                 }
             }
-
         }
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ServerRow(identity: ServerIdentity, phone: Boolean, title: String, detail: String, selected: Boolean, editMode: Boolean, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().selectable(selected = selected && !editMode, role = if (editMode) Role.Button else Role.RadioButton, onClick = onClick)
+        .heightIn(min = 60.dp).padding(start = 14.dp, end = if (editMode) 10.dp else 14.dp, top = 12.dp, bottom = 12.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        ServerMark(identity.mark, phone, size = 32.dp)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        if (editMode) Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, "Edit appearance", tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
+        else if (selected) SelectedCheck()
+    }
+}
+
+@Composable
+private fun SearchGroup(query: String, onQuery: (String) -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    val text = MaterialTheme.typography.bodyLarge
+    val focus = LocalFocusManager.current
+    Group {
+        Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Icon(Icons.Rounded.Search, null, Modifier.size(22.dp), tint = colors.onSurfaceVariant)
+            BasicTextField(query, onQuery, Modifier.weight(1f).padding(vertical = 14.dp).semantics { contentDescription = "Find a server" }, singleLine = true,
+                textStyle = text.copy(color = colors.onSurface), cursorBrush = SolidColor(colors.primary),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search), keyboardActions = KeyboardActions(onSearch = { focus.clearFocus() }),
+                decorationBox = { inner ->
+                    Box(contentAlignment = Alignment.CenterStart) {
+                        if (query.isEmpty()) Text("Find a server", style = text, color = colors.onSurfaceVariant.copy(alpha = 0.85f))
+                        inner()
+                    }
+                })
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 private fun IdentityEditor(fallback: String, phone: Boolean, initial: ServerIdentity, onCancel: () -> Unit, onSave: (ServerIdentity) -> Unit) {
     var name by rememberSaveable { mutableStateOf(initial.name) }
@@ -122,50 +162,74 @@ private fun IdentityEditor(fallback: String, phone: Boolean, initial: ServerIden
     val dirty = name.trim() != initial.name || mark != initial.mark
     val goBack: () -> Unit = { if (dirty) discard = true else onCancel() }
     BackHandler(onBack = goBack)
-    if (discard) AlertDialog(onDismissRequest = { discard = false }, title = { Text("Discard appearance changes?") }, text = { Text("Your saved name and icon will stay as they were.") }, confirmButton = { TextButton(onClick = onCancel) { Text("Discard") } }, dismissButton = { TextButton(onClick = { discard = false }) { Text("Keep editing") } })
+    if (discard) AlertDialog(onDismissRequest = { discard = false }, containerColor = panelColor(), shape = RoundedCornerShape(28.dp),
+        title = { Text("Discard changes?", fontWeight = FontWeight.SemiBold) },
+        confirmButton = { TextButton(onClick = onCancel) { Text("Discard", color = MaterialTheme.colorScheme.error) } },
+        dismissButton = { TextButton(onClick = { discard = false }) { Text("Keep editing") } })
     val focus = LocalFocusManager.current
-    Column(Modifier.fillMaxWidth().imePadding().padding(horizontal = 20.dp).padding(bottom = 20.dp)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = goBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back to servers") }
-            Text("Appearance", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
-            TextButton(onClick = { focus.clearFocus(); onSave(ServerIdentity(name.trim(), mark)) }, enabled = dirty) { Text("Done") }
+    val nameFocus = remember { FocusRequester() }
+    val emojiFocus = remember { FocusRequester() }
+    Column(Modifier.fillMaxWidth().imePadding().padding(bottom = 24.dp)) {
+        Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = GroupGutter, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = goBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back to servers") }
+            Text("Appearance", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            PillButton("Done", { focus.clearFocus(); onSave(ServerIdentity(name.trim(), mark)) }, filled = true, enabled = dirty)
         }
-        Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-            Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                ServerMark(mark, phone)
-                Column(Modifier.weight(1f)) {
-                    Text(name.ifBlank { fallback }, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    Text("Preview", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-            OutlinedTextField(name, { if (it.length <= 60) name = it }, label = { Text("Server name") }, placeholder = { Text(fallback) }, singleLine = true, modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { focus.clearFocus() }))
-            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                listOf("Icon", "Emoji").forEachIndexed { index, label ->
-                    SegmentedButton(selected = emojiMode == (index == 1), onClick = { focus.clearFocus(); emojiMode = index == 1 }, shape = SegmentedButtonDefaults.itemShape(index, 2)) { Text(label) }
-                }
-            }
-            FlowRow(Modifier.fillMaxWidth().selectableGroup(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp), maxItemsInEachRow = 6) {
-                val choices = if (emojiMode) listOf("🏠", "☁️", "🌍", "🚀", "🌱", "🦊", "🐙", "🌙", "⚡", "🛰️", "🏔️", "💌").map { "emoji:$it" } else listOf("default", "cloud", "home", "globe", "storage", "shield")
-                choices.forEach { option ->
-                    val active = mark == option
-                    Box(Modifier.size(48.dp).clip(RoundedCornerShape(14.dp)).background(if (active) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer)
-                        .semantics { contentDescription = if (option.startsWith("emoji:")) option.removePrefix("emoji:") else "$option icon" }
-                        .selectable(active, role = Role.RadioButton, onClick = { mark = option; if (emojiMode) custom = option.removePrefix("emoji:"); focus.clearFocus() }), contentAlignment = Alignment.Center) {
-                        ServerMark(option, phone, compact = true)
+        Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()).padding(horizontal = GroupGutter)) {
+            Group {
+                Row(Modifier.fillMaxWidth().heightIn(min = 68.dp).padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    ServerMark(mark, phone)
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(name.ifBlank { fallback }, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text("Preview", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
+                RowDivider(16.dp)
+                FieldRow("Name", name, { if (it.length <= 60) name = it }, fallback, nameFocus,
+                    fieldKeyboard(KeyboardType.Text, ImeAction.Done, KeyboardCapitalization.Words), onIme = { focus.clearFocus() })
             }
-            if (emojiMode) {
-                if (!customVisible) TextButton(onClick = { customVisible = true }) { Icon(Icons.Outlined.Add, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Choose another emoji") }
-                else OutlinedTextField(custom, { value ->
-                    if (value.length <= 32 && !value.contains('\n')) {
-                        custom = value
-                        val first = firstSymbol(value.trim())
-                        if (first.isNotBlank()) mark = "emoji:$first"
+            Spacer(Modifier.height(24.dp))
+            Caption("Mark")
+            Group {
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 14.dp)) {
+                    listOf("Icon", "Emoji").forEachIndexed { index, label ->
+                        SegmentedButton(selected = emojiMode == (index == 1), onClick = { focus.clearFocus(); emojiMode = index == 1 },
+                            shape = SegmentedButtonDefaults.itemShape(index, 2), icon = {},
+                            colors = SegmentedButtonDefaults.colors(activeContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                activeContentColor = MaterialTheme.colorScheme.onPrimaryContainer, inactiveContainerColor = groupColor(),
+                                activeBorderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f), inactiveBorderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f))) {
+                            Text(label, fontWeight = FontWeight.SemiBold)
+                        }
                     }
-                }, label = { Text("Custom emoji") }, supportingText = { Text("Use the emoji keyboard. Only the first symbol is used.") }, singleLine = true, modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { focus.clearFocus() }))
+                }
+                FlowRow(Modifier.fillMaxWidth().padding(14.dp).selectableGroup(), horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalArrangement = Arrangement.spacedBy(8.dp), maxItemsInEachRow = 6) {
+                    val choices = if (emojiMode) listOf("🏠", "☁️", "🌍", "🚀", "🌱", "🦊", "🐙", "🌙", "⚡", "🛰️", "🏔️", "💌").map { "emoji:$it" } else listOf("default", "cloud", "home", "globe", "storage", "shield")
+                    choices.forEach { option ->
+                        val active = mark == option
+                        val shape = RoundedCornerShape(15.dp)
+                        Box(Modifier.size(48.dp).clip(shape).border(2.dp, if (active) MaterialTheme.colorScheme.primary else Color.Transparent, shape)
+                            .semantics { contentDescription = if (option.startsWith("emoji:")) option.removePrefix("emoji:") else "$option icon" }
+                            .selectable(active, role = Role.RadioButton, onClick = { mark = option; if (emojiMode) custom = option.removePrefix("emoji:"); focus.clearFocus() }),
+                            contentAlignment = Alignment.Center) {
+                            ServerMark(option, phone, size = 38.dp)
+                        }
+                    }
+                }
+                if (emojiMode) {
+                    RowDivider(16.dp)
+                    if (!customVisible) ActionRow("Other emoji", { customVisible = true }, icon = Icons.Rounded.Add)
+                    else FieldRow("Emoji", custom, { value ->
+                        if (value.length <= 32 && !value.contains('\n')) {
+                            custom = value
+                            val first = firstSymbol(value.trim())
+                            if (first.isNotBlank()) mark = "emoji:$first"
+                        }
+                    }, "Any emoji", emojiFocus, fieldKeyboard(KeyboardType.Text, ImeAction.Done), onIme = { focus.clearFocus() })
+                }
             }
-            Text("Appearance is saved on this phone. Your server’s address stays the same.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (emojiMode && customVisible) Footer("Only the first emoji is used.")
         }
     }
 }

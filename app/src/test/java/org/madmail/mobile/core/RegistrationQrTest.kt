@@ -8,6 +8,7 @@ import org.junit.Test
 class RegistrationQrTest {
     @Test fun invitationSurvivesQrRoundTrip() = roundTrip(InviteLinks.invite("https://mail.example.org", "invite+token"))
     @Test fun accountSurvivesQrRoundTrip() = roundTrip(InviteLinks.login("dclogin:user@madmail.local/?p=long%2Bpassword%26value&v=1&ih=localhost&ip=11993&is=ssl&sh=localhost&sp=11465&ss=ssl&ic=3", "https://192.168.1.2:18443"))
+    @Test fun ipAccountSurvivesQrRoundTrip() = roundTrip(InviteLinks.login("dclogin:abcd@[192.168.1.2]/?p=long%2Bpassword%26value&v=1&ih=192.168.1.2&ip=11993&is=ssl&sh=192.168.1.2&sp=11465&ss=ssl&ic=3", "https://192.168.1.2:18443"))
     private fun roundTrip(payload: String) {
         val matrix = MultiFormatWriter().encode(payload, BarcodeFormat.QR_CODE, 768, 768)
         val pixels = IntArray(768 * 768) { i -> if (matrix[i % 768, i / 768]) 0xff000000.toInt() else 0xffffffff.toInt() }

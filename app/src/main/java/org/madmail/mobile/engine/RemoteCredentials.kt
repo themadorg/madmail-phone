@@ -69,7 +69,7 @@ internal class RemoteCredentials(context: Context, private val id: String) {
         require(private.size in 1..65536) { "Choose an SSH private key under 64 KiB." }
         val pair = KeyPair.load(JSch(), private, null)
         try {
-            check(!pair.isEncrypted || pair.decrypt(passphrase)) { "The private key passphrase is incorrect." }
+            check(!pair.isEncrypted || pair.decrypt(passphrase)) { "Wrong passphrase." }
             val public = ByteArrayOutputStream().also { pair.writePublicKey(it, "madmail-mobile") }.toString("UTF-8").trim()
             write("ssh", JSONObject().put("private", encoder.encodeToString(private)).put("passphrase", encoder.encodeToString(passphrase)).put("public", public))
             return public

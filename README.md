@@ -1,4 +1,4 @@
-<img src="assets/icon.svg" width="64" height="64" alt="">
+<img src="assets/brand/madmail_logo.png" width="64" height="64" alt="">
 
 # Madmail Mobile
 
@@ -27,9 +27,9 @@ Remote SSH management supports explicit host-key trust, generated/imported SSH k
 
 Settings uses grouped subpages with live API controls, account quotas, masked secret editors, copyable connection details and managed local/SSH restart. See [settings behavior and limits](docs/settings-flow.md).
 
-Invite now creates real server-scoped invitation links with labels, use limits, expiry, usage and revocation, or a personal Delta Chat account QR with explicit connection settings. Copy, text/image sharing, an enlarged scanning view, and editable guest-facing addresses are available. The guest-address picker separates Wi-Fi/hotspot/VPN interfaces, reads remote addresses over SSH, and checks listener ports. Account QR is the default; browser links are refused when the server still advertises its placeholder mail hostname. See [invitation behavior and validation](docs/invitation-flow.md).
+Invite now creates real server-scoped invitation links with labels, use limits, expiry, usage and revocation, or a personal Delta Chat account QR with explicit connection settings. Copy, text/image sharing, an enlarged scanning view, and editable guest-facing addresses are available. The guest-address picker separates Wi-Fi/hotspot/VPN interfaces, reads remote addresses over SSH, and checks listener ports. Account QR is the default; browser links are refused when the server's invitation page names a different address than the chosen one. See [invitation behavior and validation](docs/invitation-flow.md).
 
-Phone ports: SMTP TLS **11465**, IMAP TLS **11993**, HTTPS **18443**. The internal admin HTTP listener is loopback-only on **18080**. Initial certificates are self-signed for `madmail.local`. Explicit account-QR login, SecureJoin and encrypted text/reply delivery are verified between two separate Delta Chat profiles on the Pixel; another physical LAN guest, offline networking and Tailscale still need validation. See [device verification](docs/invitation-flow.md).
+Phone ports: SMTP TLS **11465**, IMAP TLS **11993**, HTTPS **18443**. The internal admin HTTP listener is loopback-only on **18080**. The mail domain and self-signed certificate use the phone's current guest IP address, never a `.local` name. Explicit account-QR login, SecureJoin and encrypted text/reply delivery are verified between two separate Delta Chat profiles on the Pixel; another physical LAN guest, offline networking and Tailscale still need validation. See [device verification](docs/invitation-flow.md).
 
 See [the product and architecture brainstorm](docs/architecture.md) for scope, root design, compatibility gates, and implementation milestones.
 

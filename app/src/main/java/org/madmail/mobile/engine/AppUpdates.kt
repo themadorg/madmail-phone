@@ -51,10 +51,10 @@ internal class AppUpdates(private val context: Context) {
         require(archive.packageName == context.packageName) { "This package is not Madmail Mobile." }
         val expected = if (Build.VERSION.SDK_INT >= 28) current.signingInfo!!.apkContentsSigners else current.signatures!!
         val actual = if (Build.VERSION.SDK_INT >= 28) archive.signingInfo!!.apkContentsSigners else archive.signatures!!
-        require(actual.toSet() == expected.toSet()) { "Update signer does not match this installed app." }
+        require(actual.toSet() == expected.toSet()) { "Update signature doesn’t match." }
         val next = if (Build.VERSION.SDK_INT >= 28) archive.longVersionCode else archive.versionCode.toLong()
         val old = if (Build.VERSION.SDK_INT >= 28) current.longVersionCode else current.versionCode.toLong()
-        require(next > old) { "Choose a newer app package. Downgrades are blocked to protect server data." }
+        require(next > old) { "Choose a newer version. Downgrades are blocked." }
         return archive.versionName ?: next.toString()
     }
     fun install() {

@@ -12,7 +12,7 @@ Overview exposes **Allow background hosting**, opening Android's battery-optimiz
 
 Paths under private app files:
 
-- `madmail/chatmail.toml`: stable config, not rewritten on updates.
+- `madmail/chatmail.toml`: rewritten on every start from the selected guest IP (`primary_domain = "[ip]"`). Every earlier domain stays in `local_domains`; the previous file and certificate are kept under `backups/<timestamp>-domain`.
 - `madmail/data`: upstream databases, account/mail data, admin token and certificates.
 - `madmail/backups/<timestamp>-<version>`: cold data/config copy before changing the version that opens existing data.
 

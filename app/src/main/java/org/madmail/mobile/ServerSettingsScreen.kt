@@ -1,57 +1,68 @@
 package org.madmail.mobile
 
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
-
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.text.format.Formatter
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.background
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.selection.toggleable
-import androidx.compose.ui.semantics.Role
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
-import androidx.compose.material.icons.outlined.*
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.rounded.Login
+import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.semantics.heading
-import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import org.json.JSONObject
 import org.madmail.mobile.core.*
 import org.madmail.mobile.engine.*
 import java.text.NumberFormat
 
-private data class SettingsPage(val id: String, val title: String, val subtitle: String, val icon: ImageVector)
+private data class SettingsPage(val id: String, val title: String, val subtitle: String, val tint: Tint, val icon: ImageVector)
 private val settingsPages = listOf(
-    SettingsPage("registration", "Registration", "Sign-ups and invitation requirements", Icons.Outlined.PersonAdd),
-    SettingsPage("accounts", "Accounts", "Members and storage quotas", Icons.Outlined.PeopleOutline),
-    SettingsPage("storage", "Mail & storage", "Message size, retention and cleanup", Icons.Outlined.Storage),
-    SettingsPage("network", "Network & ports", "Listeners and server hostname", Icons.Outlined.SettingsEthernet),
-    SettingsPage("services", "Calls & services", "Relays, push and browser access", Icons.Outlined.Widgets),
-    SettingsPage("federation", "Federation", "Delivery policy and domain signing", Icons.Outlined.Hub),
-    SettingsPage("proxies", "Proxies", "Shadowsocks and HTTP proxy", Icons.Outlined.VpnLock),
-    SettingsPage("administration", "Administration", "Web dashboard and server restart", Icons.Outlined.AdminPanelSettings),
-    SettingsPage("connection", "Connection", "Hosting and connection details", Icons.Outlined.Link),
+    SettingsPage("registration", "Registration", "Sign-ups and invitations", Tint.Purple, Icons.Rounded.PersonAdd),
+    SettingsPage("accounts", "Accounts", "Members and quotas", Tint.Orange, Icons.Rounded.Group),
+    SettingsPage("storage", "Mail & storage", "Size and retention", Tint.Yellow, Icons.Rounded.Inventory2),
+    SettingsPage("network", "Network & ports", "Ports and hostname", Tint.Teal, Icons.Rounded.SettingsEthernet),
+    SettingsPage("services", "Calls & services", "Relays and push", Tint.Green, Icons.Rounded.Call),
+    SettingsPage("federation", "Federation", "Policy and signing", Tint.Indigo, Icons.Rounded.Public),
+    SettingsPage("proxies", "Proxies", "Shadowsocks and HTTP", Tint.Graphite, Icons.Rounded.VpnLock),
+    SettingsPage("administration", "Administration", "Dashboard and restart", Tint.Gray, Icons.Rounded.AdminPanelSettings),
+    SettingsPage("connection", "Connection", "Connection details", Tint.Teal, Icons.Rounded.Link),
+)
+/** Root list sections: caption to page ids. */
+private val settingsSections = listOf(
+    "Server" to listOf("registration", "accounts", "storage"),
+    "Delivery" to listOf("network", "services", "federation"),
+    "Advanced" to listOf("proxies", "administration", "connection"),
 )
 
 @Composable
@@ -72,72 +83,96 @@ internal fun ServerSettingsScreen(serverId: String, serverName: String, remote: 
     var quotaTarget by remember { mutableStateOf<String?>(null) }
     var quotaInitial by remember { mutableLongStateOf(0L) }
     val enabled = ready && !state.busy && !state.stale && state.values != null
+    val canRestart = ready && !state.busy && (remote == null || remoteState?.managed == true)
     fun navigate(next: String) { page = next; onNavigate() }
     fun back() { navigate(if (page == "account") "accounts" else "root") }
     BackHandler(page != "root") { back() }
     LaunchedEffect(ready) { if (ready) controller.refresh() }
     LaunchedEffect(page, ready) { if (ready && page in listOf("accounts", "federation")) controller.loadDetails(page) }
     val title = settingsPages.find { it.id == page }?.title ?: if (page == "account") "Account" else "Settings"
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (page != "root") IconButton(onClick = { back() }) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back to settings") }
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, modifier = Modifier.semantics { heading() })
-                Text(serverName, style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+        Column {
+            AnimatedVisibility(page != "root", enter = fadeIn(tween(220, easing = Emphasized)) + expandVertically(tween(300, easing = Emphasized)),
+                exit = fadeOut(tween(120)) + shrinkVertically(tween(260, easing = Emphasized))) {
+                IconButton(onClick = { back() }, Modifier.offset(x = (-8).dp)) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back to settings") }
             }
-            IconButton(onClick = { controller.refresh(); if (page in listOf("accounts", "federation")) controller.loadDetails(page) }, enabled = ready && !state.busy) { Icon(Icons.Outlined.Refresh, "Refresh settings", tint = colors.primary) }
+            PageTitle(title, serverName) {
+                IconButton(onClick = { controller.refresh(); if (page in listOf("accounts", "federation")) controller.loadDetails(page) }, enabled = ready && !state.busy,
+                    colors = IconButtonDefaults.iconButtonColors(containerColor = groupColor(), contentColor = colors.onSurfaceVariant,
+                        disabledContainerColor = groupColor(), disabledContentColor = colors.onSurfaceVariant.copy(alpha = 0.38f))) {
+                    Icon(Icons.Rounded.Refresh, "Refresh settings", Modifier.size(22.dp))
+                }
+            }
         }
-        if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-        if (!ready) Text(if (remote == null) "Start hosting in Overview to load and change settings." else "Connect and start this server in Overview to load settings.", color = colors.onSurfaceVariant)
-        state.error?.let { Text(it, color = colors.error, style = MaterialTheme.typography.bodyMedium) }
-        state.message?.let { Text(it, color = colors.primary, style = MaterialTheme.typography.bodyMedium) }
-        if (state.restartRequired) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Icon(Icons.Outlined.RestartAlt, null, tint = colors.primary)
-            Text("Saved changes need a restart.", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-            TextButton(onClick = { restart = true }, enabled = ready && !state.busy && (remote == null || remoteState?.managed == true)) { Text("Restart") }
+        val notices = state.busy || !ready || state.error != null || state.message != null || state.restartRequired
+        if (notices) Column(Modifier.animateContentSize(tween(300, easing = Emphasized)), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 4.dp).clip(CircleShape), strokeCap = StrokeCap.Round)
+            if (!ready) Group {
+                InfoRow(Tint.Gray, Icons.Rounded.PowerSettingsNew, if (remote == null) "Hosting is off" else "Not connected",
+                    if (remote == null) "Start hosting in Overview." else "Connect in Overview.")
+            }
+            state.error?.let { Group { InfoRow(Tint.Red, Icons.Rounded.ErrorOutline, "Something went wrong", it) } }
+            state.message?.let { Group { InfoRow(Tint.Green, Icons.Rounded.Check, it) } }
+            if (state.restartRequired) Group {
+                InfoRow(Tint.Orange, Icons.Rounded.RestartAlt, "Restart needed") {
+                    PillButton("Restart", onClick = { restart = true }, enabled = canRestart)
+                }
+            }
         }
-        AnimatedContent(page, transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "Settings navigation") { displayedPage ->
-            Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
+        AnimatedContent(page, transitionSpec = {
+            (fadeIn(tween(240, 60, easing = Emphasized)) + slideInVertically(tween(320, easing = Emphasized)) { 20 }) togetherWith fadeOut(tween(90))
+        }, label = "Settings navigation") { displayedPage ->
+            Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
                 when (displayedPage) {
                     "root" -> {
-                        SettingsGroup {
-                            settingsPages.take(3).forEach { item -> SettingsNavigation(item.title, item.subtitle, item.icon) { navigate(item.id) } }
+                        settingsSections.forEach { (caption, ids) ->
+                            Section(caption) {
+                                settingsPages.filter { it.id in ids }.forEachIndexed { index, item ->
+                                    if (index > 0) RowDivider(60.dp)
+                                    NavRow({ TintIcon(item.tint, item.icon) }, item.title, item.subtitle) { navigate(item.id) }
+                                }
+                            }
                         }
-                        SettingsGroup {
-                            settingsPages.slice(3..6).forEach { item -> SettingsNavigation(item.title, item.subtitle, item.icon) { navigate(item.id) } }
+                        Column {
+                            Caption("On this phone")
+                            AppLockSettings()
                         }
-                        SettingsGroup {
-                            settingsPages.drop(7).forEach { item -> SettingsNavigation(item.title, item.subtitle, item.icon) { navigate(item.id) } }
-                        }
-                        HorizontalDivider()
-                        AppLockSettings()
                     }
                     "connection" -> {
                         if (remote != null) {
-                            SettingsGroup {
-                                if (remoteState?.transport == "API") SettingsCopyRow("Admin API", remoteState.apiEndpoint ?: "Not configured", Icons.Outlined.Api)
-                                else {
-                                SettingsCopyRow("SSH host", remote.host, Icons.Outlined.Dns)
-                                SettingsCopyRow("Username", remote.user, Icons.Outlined.PersonOutline)
-                                SettingsCopyRow("SSH port", remote.port.toString(), Icons.Outlined.SettingsEthernet)
-                                val fingerprint = RemoteEngine.get(context, remote).fingerprint
-                                fingerprint?.let { SettingsCopyRow("Host fingerprint", it, Icons.Outlined.Fingerprint) }
+                            if (remoteState?.transport == "API") Section("Admin API") {
+                                val endpoint = remoteState.apiEndpoint
+                                ValueRow("Address", endpoint ?: "Not configured", copyable = endpoint != null, mark = { TintIcon(Tint.Teal, Icons.Rounded.Api) })
+                            } else Section("SSH") {
+                                ValueRow("Host", remote.host, copyable = true, mark = { TintIcon(Tint.Blue, Icons.Rounded.Dns) })
+                                RowDivider(60.dp)
+                                ValueRow("Username", remote.user, copyable = true, mark = { TintIcon(Tint.Orange, Icons.Rounded.Person) })
+                                RowDivider(60.dp)
+                                ValueRow("Port", remote.port.toString(), copyable = true, mark = { TintIcon(Tint.Teal, Icons.Rounded.SettingsEthernet) })
+                                RemoteEngine.get(context, remote).fingerprint?.let {
+                                    RowDivider(60.dp)
+                                    ValueRow("Fingerprint", it, copyable = true, mark = { TintIcon(Tint.Graphite, Icons.Rounded.Fingerprint) })
                                 }
                             }
                             RemoteControls(remote)
-                            TextButton(onClick = { remove = true }) { Icon(Icons.Outlined.DeleteOutline, null, tint = colors.error); Spacer(Modifier.width(8.dp)); Text("Remove saved server", color = colors.error) }
-                        } else {
-                            SettingsGroup {
-                                SettingsCopyRow("SMTP TLS", "11465", Icons.Outlined.Upload)
-                                SettingsCopyRow("IMAP TLS", "11993", Icons.Outlined.Download)
-                                SettingsCopyRow("HTTPS", "18443", Icons.Outlined.Lock)
+                            Section {
+                                ActionRow("Remove saved server", { remove = true }, destructive = true, icon = Icons.Rounded.DeleteOutline)
                             }
-                            Text("These hosting ports work without root. Guests connect through the phone’s Wi-Fi or hotspot address.", color = colors.onSurfaceVariant)
+                        } else {
+                            Section("Hosting ports") {
+                                ValueRow("SMTP TLS", "11465", copyable = true, mark = { TintIcon(Tint.Teal, Icons.Rounded.Upload) })
+                                RowDivider(60.dp)
+                                ValueRow("IMAP TLS", "11993", copyable = true, mark = { TintIcon(Tint.Teal, Icons.Rounded.Download) })
+                                RowDivider(60.dp)
+                                ValueRow("HTTPS", "18443", copyable = true, mark = { TintIcon(Tint.Teal, Icons.Rounded.Lock) })
+                            }
                             val prefs = remember { context.getSharedPreferences("server-settings-phone", Context.MODE_PRIVATE) }
                             var root by remember { mutableStateOf(prefs.getBoolean("root_ports", false)) }
-                            if (root) {
-                                Text("The saved standard-port preference prevents startup because root forwarding is not available yet.", color = colors.error)
-                                Button(onClick = { prefs.edit().putBoolean("root_ports", false).apply(); root = false }) { Text("Use default ports") }
+                            if (root) Group {
+                                InfoRow(Tint.Red, Icons.Rounded.ErrorOutline, "Standard ports unavailable",
+                                    "Standard ports need root. Use default ports to start hosting.")
+                                RowDivider(16.dp)
+                                ActionRow("Use default ports", { prefs.edit().putBoolean("root_ports", false).apply(); root = false })
                             }
                         }
                     }
@@ -145,15 +180,23 @@ internal fun ServerSettingsScreen(serverId: String, serverName: String, remote: 
                         val quota = state.quota
                         val rows = state.accounts?.optJSONArray("accounts")
                         if (ready && rows != null) {
-                            Text("${NumberFormat.getIntegerInstance().format(rows.length())} accounts", style = MaterialTheme.typography.titleMedium)
-                            SettingsGroup {
-                                SettingsNavigation("Default storage quota", quota?.optLong("default_quota_bytes")?.let { Formatter.formatFileSize(context, it) } ?: "Not loaded", Icons.Outlined.Storage, enabled) { quotaTarget = ""; quotaInitial = quota?.optLong("default_quota_bytes") ?: 0L }
+                            Section("Defaults") {
+                                NavRow({ TintIcon(Tint.Yellow, Icons.Rounded.DataUsage) }, "Default storage quota",
+                                    value = quota?.optLong("default_quota_bytes")?.let { Formatter.formatFileSize(context, it) } ?: "Not loaded", enabled = enabled) {
+                                    quotaTarget = ""; quotaInitial = quota?.optLong("default_quota_bytes") ?: 0L
+                                }
                             }
-                            if (rows.length() == 0) Text("No accounts yet. Create an account QR from Invite.", color = colors.onSurfaceVariant)
-                            SettingsGroup {
+                            if (rows.length() == 0) Group { InfoRow(Tint.Orange, Icons.Rounded.Group, "No accounts yet", "Create one from Invite.") }
+                            else Section("${NumberFormat.getIntegerInstance().format(rows.length())} ${if (rows.length() == 1) "account" else "accounts"}",
+                                footer = "Older madmail.local accounts still work."
+                                    .takeIf { (0 until rows.length()).any { rows.getJSONObject(it).optString("username").endsWith("@madmail.local", ignoreCase = true) } }) {
                                 for (i in 0 until rows.length()) {
                                     val row = rows.getJSONObject(i)
-                                    SettingsNavigation(row.getString("username"), "${Formatter.formatFileSize(context, row.optLong("used_bytes"))} used · ${Formatter.formatFileSize(context, row.optLong("max_bytes"))} quota", Icons.Outlined.PersonOutline) { account = row; navigate("account") }
+                                    if (i > 0) RowDivider(60.dp)
+                                    NavRow({ TintIcon(Tint.Orange, Icons.Rounded.Person) }, row.getString("username"),
+                                        "${Formatter.formatFileSize(context, row.optLong("used_bytes"))} used · ${Formatter.formatFileSize(context, row.optLong("max_bytes"))} quota") {
+                                        account = row; navigate("account")
+                                    }
                                 }
                             }
                         }
@@ -161,63 +204,61 @@ internal fun ServerSettingsScreen(serverId: String, serverName: String, remote: 
                     "account" -> account?.let { row ->
                         val username = row.getString("username")
                         val updated = state.accounts?.optJSONArray("accounts")?.let { array -> (0 until array.length()).map { array.getJSONObject(it) }.find { it.optString("username") == username } } ?: row
-                        SettingsGroup {
-                            SettingsCopyRow("Email address", username, Icons.Outlined.AlternateEmail)
-                            SettingsCopyRow("Storage used", Formatter.formatFileSize(context, updated.optLong("used_bytes")), Icons.Outlined.Storage)
-                            SettingsNavigation("Storage quota", Formatter.formatFileSize(context, updated.optLong("max_bytes")), Icons.Outlined.DataUsage, enabled) { quotaTarget = username; quotaInitial = updated.optLong("max_bytes") }
+                        Section("Account") {
+                            ValueRow("Address", username, copyable = true, mark = { TintIcon(Tint.Blue, Icons.Rounded.AlternateEmail) })
+                            RowDivider(60.dp)
+                            ValueRow("Storage used", Formatter.formatFileSize(context, updated.optLong("used_bytes")), mark = { TintIcon(Tint.Yellow, Icons.Rounded.Storage) })
+                            RowDivider(60.dp)
+                            NavRow({ TintIcon(Tint.Yellow, Icons.Rounded.DataUsage) }, "Storage quota", value = Formatter.formatFileSize(context, updated.optLong("max_bytes")), enabled = enabled) {
+                                quotaTarget = username; quotaInitial = updated.optLong("max_bytes")
+                            }
                         }
-                        TextButton(onClick = { deleteAccount = true }, enabled = enabled) { Icon(Icons.Outlined.DeleteOutline, null, tint = colors.error); Spacer(Modifier.width(8.dp)); Text("Delete account", color = colors.error) }
+                        Section {
+                            ActionRow("Delete account", { deleteAccount = true }, destructive = true, enabled = enabled, icon = Icons.Rounded.DeleteOutline)
+                        }
                     }
                     else -> {
-                        SettingsGroup {
-                            serverSettings.filter { it.section == displayedPage }.forEach { setting ->
+                        val footer = when (displayedPage) {
+                            "registration" -> "Manage invitations in Invite."
+                            "network" -> "App-managed ports are read-only."
+                            else -> null
+                        }
+                        Section(footer = footer) {
+                            serverSettings.filter { it.section == displayedPage }.forEachIndexed { index, setting ->
                                 val raw = if (ready) state.values?.opt(setting.key)?.takeUnless { it == JSONObject.NULL } else null
                                 val current = if (raw is JSONObject) raw.optString("value") else raw?.toString()
                                 val checked = when (current) { "enabled", "open", "true" -> true; "disabled", "closed", "false" -> false; else -> null }
                                 val display = when {
-                                    current == null -> if (ready && state.values != null) "Not reported by this server" else "Not loaded"
+                                    current == null -> if (ready && state.values != null) "Not reported" else "Not loaded"
                                     current.isEmpty() -> "Hosting default"
                                     setting.kind == SettingKind.Secret -> "••••••••"
                                     setting.kind == SettingKind.PositiveNumber -> current.toLongOrNull()?.let { NumberFormat.getIntegerInstance().format(it) } ?: current
                                     else -> setting.display(current)
                                 }
+                                val (tint, icon) = settingMark(setting)
+                                if (index > 0) RowDivider(60.dp)
                                 if (setting.kind == SettingKind.Toggle) {
-                                    Row(Modifier.fillMaxWidth().then(if (checked != null) Modifier.toggleable(value = checked, enabled = enabled, role = Role.Switch, onValueChange = { controller.save(setting, it.toString()) }) else Modifier).padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                        Icon(settingIcon(setting), null, Modifier.size(22.dp), tint = colors.primary)
-                                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                            Text(setting.title, style = MaterialTheme.typography.bodyLarge)
-                                            if (setting.hint.isNotBlank()) Text(setting.hint, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
-                                            if (checked == null) Text(display, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
-                                        }
-                                        if (checked != null) Switch(checked = checked, onCheckedChange = null, enabled = enabled)
-                                        else Icon(Icons.Outlined.HelpOutline, "Status unknown", tint = colors.onSurfaceVariant)
-                                    }
-                                } else {
-                                    Row(Modifier.fillMaxWidth().clickable(enabled = enabled && current != null && setting.kind != SettingKind.Managed) { editing = setting }.padding(start = 16.dp, end = 4.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                        Icon(settingIcon(setting), null, Modifier.size(22.dp), tint = colors.primary)
-                                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                            Text(setting.title, style = MaterialTheme.typography.bodyLarge)
-                                            Text(display, style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"), color = colors.onSurfaceVariant)
-                                        }
-                                        if (!current.isNullOrBlank() && setting.kind != SettingKind.Secret) IconButton(onClick = { copySetting(context, setting.title, current) }) { Icon(Icons.Outlined.ContentCopy, "Copy ${setting.title}", Modifier.size(18.dp), tint = colors.primary) }
-                                        if (setting.kind != SettingKind.Managed) Icon(Icons.Outlined.Edit, null, Modifier.padding(end = 12.dp).size(18.dp), tint = colors.onSurfaceVariant)
-                                    }
-                                }
-                                HorizontalDivider(Modifier.padding(start = 50.dp), color = colors.outlineVariant.copy(alpha = .6f))
+                                    if (checked != null) SwitchRow(tint, icon, setting.title, setting.hint.ifBlank { null }, checked, enabled) { controller.save(setting, it.toString()) }
+                                    else InfoRow(tint, icon, setting.title, listOf(setting.hint, display).filter { it.isNotBlank() }.joinToString("\n"))
+                                } else SettingRow(tint, icon, setting.title, display, clickable = enabled && current != null, editable = setting.kind != SettingKind.Managed,
+                                    copy = if (!current.isNullOrBlank() && setting.kind != SettingKind.Secret) ({ copySetting(context, setting.title, current) }) else null) { editing = setting }
                             }
                         }
-                        if (displayedPage == "registration") Text("Create, share and revoke invitation tokens from the Invite tab.", color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
-                        if (displayedPage == "network") Text("App-managed mail and web ports are read-only here to keep hosting, health checks and SSH tunnels reachable.", color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                         if (displayedPage == "federation" && ready) state.dkim?.let { dkim ->
-                            Text("Domain signing", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                            SettingsGroup {
-                                listOf("domain" to "Domain", "selector" to "Selector", "dns_name" to "DNS record", "txt" to "TXT value").forEach { (key, label) ->
-                                    dkim.optString(key).takeUnless { it.isBlank() || it == "null" }?.let { SettingsCopyRow(label, it, Icons.Outlined.VerifiedUser) }
+                            val rows = listOf(Triple("domain", "Domain", Tint.Indigo to Icons.Rounded.Public), Triple("selector", "Selector", Tint.Graphite to Icons.Rounded.Key),
+                                Triple("dns_name", "DNS record", Tint.Blue to Icons.Rounded.Dns), Triple("txt", "TXT value", Tint.Graphite to Icons.Rounded.VerifiedUser))
+                                .mapNotNull { (key, label, mark) -> dkim.optString(key).takeUnless { it.isBlank() || it == "null" }?.let { Triple(label, it, mark) } }
+                            if (rows.isNotEmpty()) Section("Domain signing") {
+                                rows.forEachIndexed { index, (label, value, mark) ->
+                                    if (index > 0) RowDivider(60.dp)
+                                    ValueRow(label, value, copyable = true, mark = { TintIcon(mark.first, mark.second) })
                                 }
                             }
                         }
-                        if (displayedPage == "administration") {
-                            SettingsNavigation("Restart server", if (remote == null) "Restart the phone’s Madmail process" else if (remoteState?.managed == true) "Restart the managed service over SSH" else "Requires the app-managed SSH service", Icons.Outlined.RestartAlt, ready && !state.busy && (remote == null || remoteState?.managed == true)) { restart = true }
+                        if (displayedPage == "administration") Section("Maintenance") {
+                            NavRow({ TintIcon(Tint.Gray, Icons.Rounded.RestartAlt) }, "Restart server",
+                                if (remote == null || remoteState?.managed == true) null else "Needs the app-managed service",
+                                enabled = canRestart) { restart = true }
                         }
                     }
                 }
@@ -229,50 +270,73 @@ internal fun ServerSettingsScreen(serverId: String, serverName: String, remote: 
         val value = if (raw is JSONObject) raw.optString("value") else raw?.toString().orEmpty()
         SettingsEditor(setting, value, remote == null, onDismiss = { editing = null }, onSave = { next, reset -> controller.save(setting, next, reset); editing = null })
     }
-    if (restart) AlertDialog(onDismissRequest = { restart = false }, title = { Text("Restart $serverName?") }, text = { Text("Active connections will briefly disconnect while saved settings take effect.") }, confirmButton = { TextButton(onClick = { controller.restart(); restart = false }) { Text("Restart") } }, dismissButton = { TextButton(onClick = { restart = false }) { Text("Cancel") } })
-    if (remove) AlertDialog(onDismissRequest = { remove = false }, title = { Text("Remove $serverName?") }, text = { Text("Only the saved connection is removed. The remote server and its data stay intact.") }, confirmButton = { TextButton(onClick = { SettingsController.forget(serverId); onRemove() }) { Text("Remove") } }, dismissButton = { TextButton(onClick = { remove = false }) { Text("Cancel") } })
-    if (deleteAccount && account != null) AlertDialog(onDismissRequest = { deleteAccount = false }, title = { Text("Delete account?") }, text = { Text("Permanently remove ${account!!.getString("username")} and its stored mail. The address will also be blocked from re-registering.") }, confirmButton = { TextButton(onClick = {
-        controller.mutate("/admin/accounts", "DELETE", JSONObject().put("username", account!!.getString("username")), success = "Account deleted.", refreshAccounts = true)
-        deleteAccount = false; navigate("accounts")
-    }) { Text("Delete", color = colors.error) } }, dismissButton = { TextButton(onClick = { deleteAccount = false }) { Text("Cancel") } })
+    if (restart) KitDialog("Restart $serverName?", "Connections drop briefly.", "Restart",
+        onConfirm = { controller.restart(); restart = false }, onDismiss = { restart = false })
+    if (remove) KitDialog("Remove $serverName?", "Only the saved connection is removed.", "Remove",
+        onConfirm = { SettingsController.forget(serverId); onRemove() }, onDismiss = { remove = false })
+    if (deleteAccount && account != null) KitDialog("Delete account?", "Permanently deletes ${account!!.getString("username")} and its mail. The address can’t register again.", "Delete",
+        onConfirm = {
+            controller.mutate("/admin/accounts", "DELETE", JSONObject().put("username", account!!.getString("username")), success = "Account deleted.", refreshAccounts = true)
+            deleteAccount = false; navigate("accounts")
+        }, onDismiss = { deleteAccount = false })
     quotaTarget?.let { username ->
         var draft by remember { mutableStateOf((quotaInitial / (1024 * 1024)).toString()) }
         val amount = draft.toLongOrNull()?.takeIf { it in 1..(Long.MAX_VALUE / (1024 * 1024)) }
-        AlertDialog(onDismissRequest = { quotaTarget = null }, title = { Text(if (username.isEmpty()) "Default storage quota" else "Account quota") }, text = { OutlinedTextField(draft, { draft = it.filter(Char::isDigit) }, label = { Text("Storage in MiB") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), supportingText = { Text("1 MiB = 1,048,576 bytes") }) }, confirmButton = { TextButton(enabled = amount != null, onClick = {
+        val focus = remember { FocusRequester() }
+        fun save() {
             controller.mutate("/admin/quota", "PUT", JSONObject().put("max_bytes", amount!! * 1024 * 1024).apply { if (username.isNotEmpty()) put("username", username) }, success = "Storage quota saved.", refreshAccounts = true)
             quotaTarget = null
-        }) { Text("Save") } }, dismissButton = { TextButton(onClick = { quotaTarget = null }) { Text("Cancel") } })
-    }
-}
-
-@Composable
-private fun SettingsGroup(content: @Composable ColumnScope.() -> Unit) {
-    Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.fillMaxWidth()) { Column(content = content) }
-}
-
-@Composable
-private fun SettingsNavigation(title: String, subtitle: String, icon: ImageVector, enabled: Boolean = true, onClick: () -> Unit) {
-    Row(Modifier.fillMaxWidth().clickable(enabled = enabled, onClick = onClick).heightIn(min = 72.dp).padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-        Icon(icon, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.primary)
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
-            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        KitDialog(if (username.isEmpty()) "Default storage quota" else "Account quota", null, "Save", confirmEnabled = amount != null, onConfirm = ::save, onDismiss = { quotaTarget = null }) {
+            Group {
+                FieldRow("Storage", draft, { draft = it.filter(Char::isDigit) }, "512", focus, fieldKeyboard(KeyboardType.Number, ImeAction.Done), { if (amount != null) save() },
+                    trailing = { Text("MiB", Modifier.padding(end = 12.dp), style = MaterialTheme.typography.bodyLarge, color = colors.onSurfaceVariant) })
+            }
+        }
     }
 }
 
+/** Caption, white group, footer: the rhythm every settings section follows. */
 @Composable
-private fun SettingsCopyRow(title: String, value: String, icon: ImageVector) {
-    val context = LocalContext.current
-    Row(Modifier.fillMaxWidth().clickable(onClickLabel = "Copy $title") { copySetting(context, title, value) }.heightIn(min = 64.dp).padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Icon(icon, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.primary)
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(title, style = MaterialTheme.typography.bodyMedium)
-            Text(value, style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"), color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        Icon(Icons.Outlined.ContentCopy, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+private fun Section(caption: String? = null, footer: String? = null, content: @Composable ColumnScope.() -> Unit) {
+    Column(Modifier.fillMaxWidth()) {
+        caption?.let { Caption(it) }
+        Group(content = content)
+        footer?.let { Footer(it) }
     }
+}
+
+/** A server value: mark, title and current value; copy and edit when the setting allows. */
+@Composable
+private fun SettingRow(tint: Tint, icon: ImageVector, title: String, value: String, clickable: Boolean, editable: Boolean, copy: (() -> Unit)?, onClick: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    Row(Modifier.fillMaxWidth().clickable(enabled = clickable && editable, role = Role.Button, onClick = onClick).heightIn(min = 60.dp)
+        .padding(start = 14.dp, end = if (editable) 10.dp else if (copy != null) 4.dp else 14.dp, top = 12.dp, bottom = 12.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        TintIcon(tint, icon)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text(value, style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"), color = colors.onSurfaceVariant)
+        }
+        copy?.let { IconButton(onClick = it) { Icon(Icons.Rounded.ContentCopy, "Copy $title", Modifier.size(18.dp), tint = colors.onSurfaceVariant.copy(alpha = 0.6f)) } }
+        if (editable) Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = colors.onSurfaceVariant.copy(alpha = 0.6f))
+    }
+}
+
+/** A confirmation in the kit: warm surface, large radius, cancel as text and the action as a pill. */
+@Composable
+private fun KitDialog(title: String, text: String?, confirm: String, onConfirm: () -> Unit, onDismiss: () -> Unit, confirmEnabled: Boolean = true,
+    content: (@Composable ColumnScope.() -> Unit)? = null) {
+    AlertDialog(onDismissRequest = onDismiss, containerColor = panelColor(), shape = RoundedCornerShape(28.dp),
+        title = { Text(title, fontWeight = FontWeight.SemiBold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                text?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                content?.let { Column(content = it) }
+            }
+        },
+        confirmButton = { PillButton(confirm, onConfirm, filled = true, enabled = confirmEnabled) },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } })
 }
 
 private fun copySetting(context: Context, title: String, value: String) {
@@ -280,41 +344,68 @@ private fun copySetting(context: Context, title: String, value: String) {
     Toast.makeText(context, "$title copied", Toast.LENGTH_SHORT).show()
 }
 
-private fun settingIcon(setting: ServerSetting): ImageVector = when {
-    setting.key == "registration" -> Icons.Outlined.PersonAdd
-    setting.key == "jit_registration" -> Icons.Outlined.Login
-    setting.key == "registration_token_required" -> Icons.Outlined.ConfirmationNumber
-    setting.key == "auto_purge_seen_enabled" -> Icons.Outlined.AutoDelete
-    setting.key == "message_retention_enabled" -> Icons.Outlined.History
-    setting.key == "turn_enabled" -> Icons.Outlined.Call
-    setting.key == "iroh_enabled" -> Icons.Outlined.Hub
-    setting.key == "push_enabled" -> Icons.Outlined.NotificationsActive
-    setting.key == "webimap_enabled" -> Icons.Outlined.CloudDownload
-    setting.key == "websmtp_enabled" -> Icons.Outlined.CloudUpload
-    setting.key == "smtp_hostname" -> Icons.Outlined.Dns
-    setting.key == "webmail_cors_origins" -> Icons.Outlined.Language
-    setting.key == "federation_policy" -> Icons.Outlined.Rule
-    setting.key == "admin_web_enabled" -> Icons.Outlined.Dashboard
-    setting.key == "language" -> Icons.Outlined.Translate
-    setting.kind == SettingKind.Secret -> Icons.Outlined.Key
-    setting.kind == SettingKind.Port || setting.kind == SettingKind.Managed -> Icons.Outlined.SettingsEthernet
-    setting.kind == SettingKind.Duration -> Icons.Outlined.Schedule
-    setting.kind == SettingKind.Size -> Icons.Outlined.DataUsage
-    else -> settingsPages.find { it.id == setting.section }?.icon ?: Icons.Outlined.Tune
+/** Hue follows meaning across the app: ports teal, secrets graphite, sizes blue, time pink, otherwise the page's own hue. */
+private fun settingMark(setting: ServerSetting): Pair<Tint, ImageVector> = when {
+    setting.key == "registration" -> Tint.Purple to Icons.Rounded.PersonAdd
+    setting.key == "jit_registration" -> Tint.Purple to Icons.AutoMirrored.Rounded.Login
+    setting.key == "registration_token_required" -> Tint.Purple to Icons.Rounded.ConfirmationNumber
+    setting.key == "auto_purge_seen_enabled" -> Tint.Yellow to Icons.Rounded.AutoDelete
+    setting.key == "message_retention_enabled" -> Tint.Yellow to Icons.Rounded.History
+    setting.key == "message_retention" -> Tint.Yellow to Icons.Rounded.Schedule
+    setting.key == "turn_enabled" -> Tint.Green to Icons.Rounded.Call
+    setting.key == "iroh_enabled" -> Tint.Green to Icons.Rounded.Hub
+    setting.key == "push_enabled" -> Tint.Green to Icons.Rounded.NotificationsActive
+    setting.key == "webimap_enabled" -> Tint.Blue to Icons.Rounded.CloudDownload
+    setting.key == "websmtp_enabled" -> Tint.Blue to Icons.Rounded.CloudUpload
+    setting.key == "smtp_hostname" -> Tint.Blue to Icons.Rounded.Dns
+    setting.key == "shared_port_imap" || setting.key == "shared_port_smtp" -> Tint.Teal to Icons.Rounded.MergeType
+    setting.key == "webmail_cors_origins" -> Tint.Teal to Icons.Rounded.Language
+    setting.key == "turn_relay_ip" -> Tint.Teal to Icons.Rounded.Router
+    setting.key == "iroh_relay_url" -> Tint.Teal to Icons.Rounded.Link
+    setting.key == "federation_enabled" -> Tint.Indigo to Icons.Rounded.Public
+    setting.key == "federation_policy" -> Tint.Indigo to Icons.Rounded.Policy
+    setting.key == "admin_web_enabled" -> Tint.Gray to Icons.Rounded.Dashboard
+    setting.key == "language" -> Tint.Gray to Icons.Rounded.Translate
+    setting.kind == SettingKind.Secret -> Tint.Graphite to Icons.Rounded.Key
+    setting.kind == SettingKind.Port || (setting.kind == SettingKind.Managed && setting.section == "network") -> Tint.Teal to Icons.Rounded.SettingsEthernet
+    setting.kind == SettingKind.Duration || setting.kind == SettingKind.PositiveNumber -> Tint.Pink to Icons.Rounded.Schedule
+    setting.kind == SettingKind.Size -> Tint.Blue to Icons.Rounded.DataUsage
+    else -> settingsPages.find { it.id == setting.section }?.let { it.tint to it.icon } ?: (Tint.Gray to Icons.Rounded.Tune)
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SettingsEditor(setting: ServerSetting, current: String, phone: Boolean, onDismiss: () -> Unit, onSave: (String, Boolean) -> Unit) {
     var draft by remember { mutableStateOf(if (setting.kind == SettingKind.Secret) "" else current) }
-    AlertDialog(onDismissRequest = onDismiss, title = { Text(setting.title) }, text = {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (setting.hint.isNotBlank()) Text(setting.hint)
-            if (setting.kind == SettingKind.Choice) FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                setting.choices.forEach { choice -> FilterChip(selected = draft == choice, onClick = { draft = choice }, label = { Text(choice) }) }
-            } else OutlinedTextField(draft, { draft = it }, label = { Text(if (setting.kind == SettingKind.Secret) "New secret" else "Value") }, singleLine = true, isError = draft.isNotBlank() && !setting.valid(draft, phone), keyboardOptions = KeyboardOptions(keyboardType = if (setting.kind in listOf(SettingKind.Port, SettingKind.PositiveNumber)) KeyboardType.Number else if (setting.kind == SettingKind.Secret) KeyboardType.Password else KeyboardType.Text), visualTransformation = if (setting.kind == SettingKind.Secret) PasswordVisualTransformation() else VisualTransformation.None, supportingText = { if (setting.kind == SettingKind.Port) Text(if (phone) "Port 1024–65535; privileged ports need root." else "Port 1–65535") })
-            if (setting.restart) Text("A server restart may be needed after saving.", style = MaterialTheme.typography.bodySmall)
-            if (setting.kind != SettingKind.Choice) TextButton(onClick = { onSave("", true) }) { Text("Use server default") }
+    val focus = remember { FocusRequester() }
+    val valid = setting.valid(draft, phone)
+    val canSave = valid && (draft != current || setting.kind == SettingKind.Secret)
+    val colors = MaterialTheme.colorScheme
+    KitDialog(setting.title, setting.hint.ifBlank { null }, "Save", confirmEnabled = canSave, onConfirm = { onSave(draft, false) }, onDismiss = onDismiss) {
+        if (setting.kind == SettingKind.Choice) Group {
+            setting.choices.forEachIndexed { index, choice ->
+                if (index > 0) RowDivider(16.dp)
+                Row(Modifier.fillMaxWidth().selectable(draft == choice, role = Role.RadioButton) { draft = choice }.heightIn(min = 52.dp).padding(horizontal = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Text(choice, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                    if (draft == choice) SelectedCheck()
+                }
+            }
+        } else {
+            val portHint = if (phone) "Port 1024–65535" else "Port 1–65535"
+            val keyboard = when (setting.kind) {
+                SettingKind.Port, SettingKind.PositiveNumber -> KeyboardType.Number
+                SettingKind.Secret -> KeyboardType.Password
+                else -> KeyboardType.Text
+            }
+            val error = if (draft.isNotBlank() && !valid) (if (setting.kind == SettingKind.Port) portHint else "Not a valid value.") else null
+            Group {
+                FieldRow(if (setting.kind == SettingKind.Secret) "New secret" else "Value", draft, { draft = it }, "", focus, fieldKeyboard(keyboard, ImeAction.Done),
+                    { if (canSave) onSave(draft, false) }, error = error, secret = setting.kind == SettingKind.Secret)
+                RowDivider(16.dp)
+                ActionRow("Use server default", { onSave("", true) })
+            }
+            if (setting.kind == SettingKind.Port && error == null) Footer(portHint)
         }
-    }, confirmButton = { TextButton(onClick = { onSave(draft, false) }, enabled = setting.valid(draft, phone) && (draft != current || setting.kind == SettingKind.Secret)) { Text("Save") } }, dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } })
+        if (setting.restart) Footer("Needs a restart.", colors.onSurfaceVariant)
+    }
 }

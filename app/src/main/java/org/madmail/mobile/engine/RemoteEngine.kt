@@ -58,11 +58,11 @@ internal class RemoteEngine private constructor(private val context: Context, va
         try { probe.connect(15000) } catch (_: JSchException) { check(offered != null) { "Unable to reach the SSH host." } }
         finally { probe.disconnect() }
         val stored = trust.getString(server.id, null)
-        check(stored == null || stored == Base64.getEncoder().encodeToString(offered)) { "The SSH host key changed. Verify the server outside this app before reconnecting." }
+        check(stored == null || stored == Base64.getEncoder().encodeToString(offered)) { "Host key changed. Verify the server before reconnecting." }
     }
     fun acceptHost() {
-        check(!trusted) { "An existing host key cannot be replaced automatically." }
-        check(trust.edit().putString(server.id, Base64.getEncoder().encodeToString(checkNotNull(offered))).commit()) { "Unable to save host trust." }
+        check(!trusted) { "A saved host key can’t be replaced." }
+        check(trust.edit().putString(server.id, Base64.getEncoder().encodeToString(checkNotNull(offered))).commit()) { "Couldn’t save the host key." }
     }
     suspend fun connect(password: String) = connectSsh(password, null, null)
     suspend fun connectKey(credential: SshCredential, apiToken: String? = null) {
@@ -87,7 +87,7 @@ internal class RemoteEngine private constructor(private val context: Context, va
         try { next.connect(15000); session = next } catch (e: Exception) { next.disconnect(); throw e }
         finally { next.setPassword(ByteArray(0)) }
         val architecture = exec("uname -m").trim().let { when(it) { "aarch64", "arm64" -> "arm64"; "x86_64" -> "amd64"; else -> error("Unsupported server architecture.") } }
-        check(exec("uname -s").trim() == "Linux") { "Remote hosting requires Linux with systemd." }
+        check(exec("uname -s").trim() == "Linux") { "The server needs Linux with systemd." }
         if (suppliedToken != null) {
             mutable.value = RemoteState(busy = true, architecture = architecture)
             refreshLocked()
@@ -128,15 +128,15 @@ internal class RemoteEngine private constructor(private val context: Context, va
         val api = apiAccess()
         AdminApi.request(api.endpoint, api.token, resource, method, body)
     }
-    suspend fun restart() = operation { check(mutable.value.managed) { "Restart requires the managed SSH service." }; managed("stop"); managed("start"); awaitReadyLocked() }
+    suspend fun restart() = operation { check(mutable.value.managed) { "Restart needs a managed SSH connection." }; managed("stop"); managed("start"); awaitReadyLocked() }
     suspend fun invitationRequest(method: String, body: JSONObject = JSONObject()): JSONObject = adminRequest("/admin/registration-token", method, body)
     private fun webEndpoint(path: String): String {
         val api = apiAccess()
         return java.net.URI(api.endpoint).resolve(path).toString()
     }
-    suspend fun createGuest(token: String): JSONObject = mutex.withLock {
+    suspend fun createGuest(token: String, created: (JSONObject) -> Unit = {}): JSONObject = mutex.withLock {
         check(mutable.value.connected)
-        AdminApi.newAccount(webEndpoint("/new"), token)
+        AdminApi.newAccount(webEndpoint("/new"), token).also(created)
     }
 
     suspend fun guestAddresses(): List<org.madmail.mobile.core.GuestAddress> = mutex.withLock {
@@ -159,19 +159,21 @@ internal class RemoteEngine private constructor(private val context: Context, va
             if (mutable.value.overview != null) return
             Thread.sleep(500)
         }
-        error("The service did not become healthy. Refresh status before taking further action; no automatic rollback was attempted.")
+        error("Service isn’t healthy and wasn’t rolled back. Refresh status.")
     }
     suspend fun stop() = operation { managed("stop"); refreshLocked() }
     suspend fun install(release: UpstreamRelease) = operation {
-        check(mutable.value.managed) { "Installation requires the managed SSH connection." }
+        check(mutable.value.managed) { "Install needs a managed SSH connection." }
         val old = mutable.value.version
-        check(old == null || compareVersions(release.version, old) >= 0) { "Downgrades require restoring a matching backup." }
+        check(old == null || compareVersions(release.version, old) >= 0) { "Restore a matching backup to downgrade." }
         val file = File(context.cacheDir, "remote/${server.id}/${release.version}.part")
         ReleaseCatalog.download(release, file)
         val upload = "/tmp/madmail-mobile-${UUID.randomUUID()}"
         try {
             sftp { it.put(file.path, upload); it.chmod(384, upload) }
-            managed("install ${shellQuote(release.version)} ${shellQuote(release.digest)} ${shellQuote(upload)}", 180000)
+            // A fresh install takes the server's IPv4 address as its mail domain; the script detects one when the host is a name.
+            val ip = server.host.takeIf(org.madmail.mobile.core.GuestAddresses::ipv4).orEmpty()
+            managed("install ${shellQuote(release.version)} ${shellQuote(release.digest)} ${shellQuote(upload)} ${shellQuote(ip)}", 180000)
             awaitReadyLocked()
         } finally {
             file.delete()
@@ -191,10 +193,10 @@ internal class RemoteEngine private constructor(private val context: Context, va
         scriptPath = path
     }
     private fun managed(args: String, timeout: Long = 45000): String {
-        check(mutable.value.managed) { "This operation requires the app-managed SSH installation." }
+        check(mutable.value.managed) { "Needs a managed SSH connection." }
         return exec("${elevation}sh ${shellQuote(checkNotNull(scriptPath))} $args", timeout)
     }
-    private fun requireSession(): Session = checkNotNull(session?.takeIf { it.isConnected }) { "SSH is disconnected. Reconnect and refresh status before retrying." }
+    private fun requireSession(): Session = checkNotNull(session?.takeIf { it.isConnected }) { "SSH disconnected. Reconnect and refresh." }
     private fun sftp(block: (ChannelSftp) -> Unit) {
         val channel = requireSession().openChannel("sftp") as ChannelSftp
         try { channel.connect(15000); block(channel) } finally { channel.disconnect() }
@@ -212,8 +214,8 @@ internal class RemoteEngine private constructor(private val context: Context, va
             channel.setErrStream(object : java.io.OutputStream() { override fun write(value: Int) {} })
             channel.connect(15000)
             val deadline = System.nanoTime() + timeout * 1_000_000
-            while (!channel.isClosed) { check(System.nanoTime() < deadline) { "SSH operation timed out. Refresh status before retrying; the remote operation may have completed." }; Thread.sleep(100) }
-            check(channel.exitStatus == 0) { "Remote command failed (${channel.exitStatus}). Verify sudo access and refresh server status before retrying." }
+            while (!channel.isClosed) { check(System.nanoTime() < deadline) { "SSH timed out. It may have finished; refresh before retrying." }; Thread.sleep(100) }
+            check(channel.exitStatus == 0) { "Command failed (${channel.exitStatus}). Check sudo access and refresh." }
             return output.toString("UTF-8")
         } finally { channel.disconnect() }
     }

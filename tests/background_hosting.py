@@ -71,12 +71,12 @@ def main():
             ):
                 with (
                     socket.create_connection(("127.0.0.1", port), timeout=3) as raw,
-                    tls.wrap_socket(raw, server_hostname="madmail.local") as stream,
+                    tls.wrap_socket(raw, server_hostname=None) as stream,
                 ):
                     stream.settimeout(3)
                     if port == ports[0]:
                         stream.sendall(
-                            b"GET / HTTP/1.1\r\nHost: madmail.local\r\nConnection: close\r\n\r\n"
+                            b"GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n"
                         )
                     assert stream.recv(256).startswith(prefix), (
                         "Unexpected listener response"
@@ -127,7 +127,7 @@ def main():
                             socket.create_connection(
                                 ("127.0.0.1", port), timeout=2
                             ) as raw,
-                            tls.wrap_socket(raw, server_hostname="madmail.local"),
+                            tls.wrap_socket(raw, server_hostname=None),
                         ):
                             raise AssertionError("Stopped server still accepts TLS")
                     except OSError:

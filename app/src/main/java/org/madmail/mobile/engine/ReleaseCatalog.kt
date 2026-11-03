@@ -24,7 +24,7 @@ internal object ReleaseCatalog {
                 connection.setRequestProperty("User-Agent", "Madmail-Mobile")
                 check(connection.responseCode == 200) {
                     if (connection.responseCode in listOf(403, 429)) "GitHub rate limit reached. Try again later."
-                    else "Unable to load releases (${connection.responseCode})."
+                    else "Couldn’t load releases (${connection.responseCode})."
                 }
                 val array = JSONArray(String(connection.inputStream.use { it.readBytesLimited(8 * 1024 * 1024) }))
                 releases += parse(array)

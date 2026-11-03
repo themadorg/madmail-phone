@@ -9,16 +9,20 @@ import android.os.Build
 import android.os.CancellationSignal
 import android.view.WindowManager
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Lock
-import androidx.compose.material.icons.outlined.LockOpen
+import androidx.compose.material.icons.rounded.ErrorOutline
+import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import org.madmail.mobile.core.AppLockState
@@ -69,7 +73,7 @@ internal class AppLock(private val activity: MainActivity) {
             state = state.authenticated(success, present, change)
             protectWindow()
             error = null
-        } else if (error == null) error = "Not unlocked. Try again when you’re ready."
+        } else if (error == null) error = "Not unlocked. Try again."
         action = null
     }
 
@@ -79,7 +83,7 @@ internal class AppLock(private val activity: MainActivity) {
         error = null
         val keyguard = activity.getSystemService(KeyguardManager::class.java)
         if (!keyguard.isDeviceSecure) {
-            error = "Set up a screen lock in Android Settings, then try again."
+            error = "Set a screen lock in Settings, then try again."
             return
         }
         action = change
@@ -90,7 +94,7 @@ internal class AppLock(private val activity: MainActivity) {
                 val request = ++generation
                 val cancellation = CancellationSignal().also { signal = it }
                 BiometricPrompt.Builder(activity).setTitle(title)
-                    .setSubtitle("Use your fingerprint or phone screen lock")
+                    .setSubtitle("Fingerprint or screen lock")
                     .setAllowedAuthenticators(Authenticators.BIOMETRIC_STRONG or Authenticators.DEVICE_CREDENTIAL)
                     .build().authenticate(cancellation, activity.mainExecutor, object : BiometricPrompt.AuthenticationCallback() {
                         override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
@@ -101,11 +105,11 @@ internal class AppLock(private val activity: MainActivity) {
                         }
                     })
             } else {
-                val intent = keyguard.createConfirmDeviceCredentialIntent(title, "Confirm your phone screen lock")
+                val intent = keyguard.createConfirmDeviceCredentialIntent(title, "Confirm screen lock")
                     ?: error("Device screen lock is unavailable")
                 credential.launch(intent)
             }
-        }.onFailure { error = "Authentication couldn’t open. Try again."; finish(false) }
+        }.onFailure { error = "Couldn’t open unlock. Try again."; finish(false) }
     }
 }
 
@@ -113,22 +117,23 @@ internal val LocalAppLock = staticCompositionLocalOf<AppLock> { error("App lock 
 
 @Composable
 internal fun AppLockScreen(lock: AppLock) {
-    Surface(Modifier.fillMaxSize()) {
-        Column(Modifier.safeDrawingPadding().padding(32.dp), verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(Icons.Outlined.Lock, null, Modifier.size(48.dp), tint = MaterialTheme.colorScheme.primary)
-            Spacer(Modifier.height(24.dp))
-            Text("Madmail is locked", style = MaterialTheme.typography.headlineSmall)
-            Spacer(Modifier.height(12.dp))
-            Text("Unlock to manage your servers. Hosting continues in the background.",
-                style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.height(28.dp))
-            Button(onClick = { lock.authenticate() }, enabled = !lock.busy, modifier = Modifier.heightIn(min = 48.dp)) {
-                Icon(Icons.Outlined.LockOpen, null, Modifier.size(20.dp))
-                Spacer(Modifier.width(8.dp))
-                Text(if (lock.busy) "Waiting for authentication…" else "Unlock")
+    Surface(Modifier.fillMaxSize(), color = panelColor()) {
+        Column(Modifier.fillMaxSize().safeDrawingPadding().padding(horizontal = GroupGutter, vertical = 24.dp)) {
+            Column(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp), verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally) {
+                TintIcon(Tint.Graphite, Icons.Rounded.Lock, size = 56.dp)
+                Spacer(Modifier.height(24.dp))
+                Text("Madmail is locked", Modifier.semantics { heading() }, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center)
+                Spacer(Modifier.height(10.dp))
+                Text("Hosting keeps running.", style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+                AnimatedVisibility(lock.error != null, enter = fadeIn(tween(240, easing = Emphasized)) + expandVertically(tween(300, easing = Emphasized)),
+                    exit = fadeOut(tween(160)) + shrinkVertically(tween(240, easing = Emphasized))) {
+                    Group(Modifier.padding(top = 24.dp)) { InfoRow(Tint.Red, Icons.Rounded.ErrorOutline, lock.error.orEmpty()) }
+                }
             }
-            lock.error?.let { Spacer(Modifier.height(16.dp)); Text(it, color = MaterialTheme.colorScheme.error) }
+            BrandButton(if (lock.busy) "Waiting…" else "Unlock", enabled = !lock.busy) { lock.authenticate() }
         }
     }
 }
@@ -136,22 +141,15 @@ internal fun AppLockScreen(lock: AppLock) {
 @Composable
 internal fun AppLockSettings() {
     val lock = LocalAppLock.current
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("On this phone", style = MaterialTheme.typography.titleMedium)
-        Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).toggleable(value = lock.enabled,
-            enabled = !lock.busy, role = Role.Switch, onValueChange = { lock.authenticate(it) }),
-            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            Icon(Icons.Outlined.Lock, null, tint = MaterialTheme.colorScheme.primary)
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("App lock", style = MaterialTheme.typography.bodyLarge)
-                Text("Protect access to all saved servers", style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Column(Modifier.animateContentSize(tween(300, easing = Emphasized))) {
+        Group {
+            SwitchRow(Tint.Graphite, Icons.Rounded.Lock, "App lock", null, lock.enabled, enabled = !lock.busy) { lock.authenticate(it) }
+            if (lock.enabled) {
+                RowDivider(60.dp)
+                ActionRow("Lock now", { lock.lock() })
             }
-            Switch(checked = lock.enabled, enabled = !lock.busy, onCheckedChange = null)
         }
-        Text("Use your phone’s screen lock. Locks when you leave Madmail; hosting keeps running.",
-            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        if (lock.enabled) TextButton(onClick = { lock.lock() }) { Text("Lock now") }
-        lock.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+        Footer("Locks when you leave. Hosting keeps running.")
+        lock.error?.let { Footer(it, color = MaterialTheme.colorScheme.error) }
     }
 }

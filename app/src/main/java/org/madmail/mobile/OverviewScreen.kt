@@ -1,33 +1,28 @@
 package org.madmail.mobile
 
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.os.StatFs
 import android.text.format.Formatter
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.*
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.semantics.LiveRegionMode
-import androidx.compose.ui.semantics.liveRegion
-import androidx.compose.ui.semantics.Role
-import kotlinx.coroutines.delay
+import androidx.compose.material.icons.automirrored.rounded.CallMade
+import androidx.compose.material.icons.automirrored.rounded.CallReceived
+import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import org.madmail.mobile.core.PortMode
 import org.madmail.mobile.core.RemoteServer
 import org.madmail.mobile.core.ServerIdentity
@@ -39,7 +34,6 @@ import java.text.NumberFormat
 
 @Composable
 internal fun OverviewScreen(name: String, identity: ServerIdentity, remote: RemoteServer?, onSettings: () -> Unit, connection: @Composable () -> Unit = {}) {
-    val colors = MaterialTheme.colorScheme
     val context = LocalContext.current
     val phone = remote == null
     val engine = remember { LocalEngine.get(context) }
@@ -63,124 +57,114 @@ internal fun OverviewScreen(name: String, identity: ServerIdentity, remote: Remo
     val ports = if (standardPorts) PortMode.RootStandard else PortMode.Unprivileged
     val version = if (phone) engineState.version ?: engine.selected?.version else remoteState?.version
 
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(32.dp)) {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                ServerMark(identity.mark, phone)
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(name, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold, modifier = Modifier.semantics { heading() })
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        val statusColor = if (running) overviewHealthyColor() else colors.onSurfaceVariant
-                        Icon(if (running) Icons.Outlined.CheckCircle else Icons.Outlined.RadioButtonUnchecked, null, Modifier.size(16.dp), tint = statusColor)
-                        Text(if (phone) "This phone · ${engineState.phase.name}" else "${remoteState?.transport ?: "SSH"} · ${remoteState?.status ?: "Not connected"}", style = MaterialTheme.typography.bodyMedium, color = statusColor)
-                    }
-                }
-            }
-            if (phone) EngineControls() else RemoteControls(remote!!)
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 4.dp)) {
+            ServerMark(identity.mark, phone, size = 56.dp)
+            Spacer(Modifier.height(18.dp))
+            Text(name, Modifier.semantics { heading() }, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.3).sp)
+            Spacer(Modifier.height(6.dp))
+            Text(if (phone) "Hosted on this phone" else if (remoteState?.transport == "API") "Admin API · ${remote!!.host}" else "SSH · ${remote!!.host}",
+                style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+
+        if (phone) EngineControls() else RemoteControls(remote!!)
 
         connection()
 
-        OverviewSection("Activity", Icons.Outlined.BarChart, if (overview == null) "Unavailable" else "Live") {
-            OverviewDetail(Icons.Outlined.PeopleOutline, "Accounts", metric("users", "registered"))
-            OverviewDetail(Icons.Outlined.Schedule, "Uptime", metric("uptime", "duration"))
-            OverviewDetail(Icons.Outlined.QrCode, "Invite tokens", metric("tokens", "total"))
-            OverviewDetail(Icons.Outlined.SyncAlt, "IMAP connections", metric("imap", "connections"))
+        Section("Activity", if (overview == null) "Unavailable" else "Live") {
+            Stat(Tint.Orange, Icons.Rounded.People, "Accounts", metric("users", "registered"))
+            Stat(Tint.Pink, Icons.Rounded.Schedule, "Uptime", metric("uptime", "duration"))
+            Stat(Tint.Purple, Icons.Rounded.QrCode2, "Invite tokens", metric("tokens", "total"))
+            Stat(Tint.Teal, Icons.Rounded.SyncAlt, "IMAP connections", metric("imap", "connections"), last = true)
         }
-        OverviewSection("Messages", Icons.Outlined.MailOutline) {
-            OverviewDetail(Icons.Outlined.NorthEast, "Sent", metric("sent_messages"))
-            OverviewDetail(Icons.Outlined.Upload, "Outbound", metric("outbound_messages"))
-            OverviewDetail(Icons.Outlined.SouthWest, "Received", metric("received_messages"))
+        Section("Messages") {
+            Stat(Tint.Blue, Icons.AutoMirrored.Rounded.CallMade, "Sent", metric("sent_messages"))
+            Stat(Tint.Blue, Icons.Rounded.Outbox, "Outbound", metric("outbound_messages"))
+            Stat(Tint.Blue, Icons.AutoMirrored.Rounded.CallReceived, "Received", metric("received_messages"), last = true)
         }
-        OverviewSection(if (phone) "Device storage" else "Server storage", Icons.Outlined.Storage) {
+        Section(if (phone) "Device storage" else "Server storage") {
             val disk = if (phone) remember(overview) { StatFs(context.filesDir.absolutePath) } else null
             val serverDisk = overview?.optJSONObject("disk")
             val total = disk?.totalBytes ?: serverDisk?.takeIf { it.has("total_bytes") }?.optLong("total_bytes")
             val available = disk?.availableBytes ?: serverDisk?.takeIf { it.has("available_bytes") }?.optLong("available_bytes")
             val used = if (disk != null) disk.totalBytes - disk.availableBytes else serverDisk?.takeIf { it.has("used_bytes") }?.optLong("used_bytes")
-            OverviewDetail(Icons.Outlined.PieChartOutline, "Used", used?.let { Formatter.formatFileSize(context, it) } ?: "—")
+            val meter = total != null && total > 0 && used != null
+            Stat(Tint.Yellow, Icons.Rounded.PieChart, "Used", used?.let { Formatter.formatFileSize(context, it) } ?: "—", last = meter)
             if (total != null && total > 0 && used != null) {
                 val fraction = (used.toFloat() / total).coerceIn(0f, 1f)
-                LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp).height(4.dp), color = if (fraction > .9f) colors.error else colors.primary)
+                LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth().padding(start = StatInset, end = 16.dp, bottom = 12.dp).height(6.dp).clip(CircleShape),
+                    color = if (fraction > .9f) MaterialTheme.colorScheme.error else Color(Tint.Yellow.bottom), trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
+                    strokeCap = StrokeCap.Round, gapSize = 0.dp, drawStopIndicator = {})
+                RowDivider(StatInset)
             }
-            OverviewDetail(Icons.Outlined.DataUsage, "Available", available?.let { Formatter.formatFileSize(context, it) } ?: "—")
-            OverviewDetail(Icons.Outlined.Storage, "Capacity", total?.let { Formatter.formatFileSize(context, it) } ?: "—")
+            Stat(Tint.Yellow, Icons.Rounded.DataUsage, "Available", available?.let { Formatter.formatFileSize(context, it) } ?: "—")
+            Stat(Tint.Yellow, Icons.Rounded.Storage, "Capacity", total?.let { Formatter.formatFileSize(context, it) } ?: "—", last = true)
         }
-        OverviewSection("Federation", Icons.Outlined.Hub) {
-            OverviewDetail(Icons.Outlined.Hub, "Connected peers", metric("email_servers", "connections"))
-            OverviewDetail(Icons.Outlined.Language, "Domain peers", metric("email_servers", "domain_servers"))
-            OverviewDetail(Icons.Outlined.Dns, "IP peers", metric("email_servers", "ip_servers"))
-            OverviewDetail(Icons.Outlined.SouthWest, "Inbound", metric("federation_traffic", "inbound"))
-            OverviewDetail(Icons.Outlined.Upload, "Outbound", metric("federation_traffic", "outbound"))
-            OverviewDetail(Icons.Outlined.HourglassEmpty, "Queued", metric("federation_traffic", "queued"))
-            OverviewDetail(Icons.Outlined.TimerOff, "Expired", metric("federation_traffic", "expired"))
-            OverviewDetail(Icons.Outlined.Speed, "Mean latency", metric("federation_traffic", "mean_latency_ms").let { if (it == "—") it else "$it ms" })
-            OverviewDetail(Icons.Outlined.CheckCircleOutline, "Perfect health", metric("federation_traffic", "health", "perfect"))
-            OverviewDetail(Icons.Outlined.Share, "Federated", metric("federation_traffic", "health", "federated"))
-            OverviewDetail(Icons.Outlined.ErrorOutline, "Unhealthy", metric("federation_traffic", "health", "bad"))
+        Section("Federation") {
+            Stat(Tint.Indigo, Icons.Rounded.Hub, "Connected peers", metric("email_servers", "connections"))
+            Stat(Tint.Indigo, Icons.Rounded.Language, "Domain peers", metric("email_servers", "domain_servers"))
+            Stat(Tint.Indigo, Icons.Rounded.Dns, "IP peers", metric("email_servers", "ip_servers"))
+            Stat(Tint.Indigo, Icons.AutoMirrored.Rounded.CallReceived, "Inbound", metric("federation_traffic", "inbound"))
+            Stat(Tint.Indigo, Icons.AutoMirrored.Rounded.CallMade, "Outbound", metric("federation_traffic", "outbound"))
+            Stat(Tint.Pink, Icons.Rounded.HourglassEmpty, "Queued", metric("federation_traffic", "queued"))
+            Stat(Tint.Orange, Icons.Rounded.TimerOff, "Expired", metric("federation_traffic", "expired"))
+            Stat(Tint.Pink, Icons.Rounded.Speed, "Latency", metric("federation_traffic", "mean_latency_ms").let { if (it == "—") it else "$it ms" })
+            Stat(Tint.Green, Icons.Rounded.CheckCircle, "Healthy", metric("federation_traffic", "health", "perfect"))
+            Stat(Tint.Indigo, Icons.Rounded.Share, "Federated", metric("federation_traffic", "health", "federated"))
+            Stat(Tint.Red, Icons.Rounded.ErrorOutline, "Unhealthy", metric("federation_traffic", "health", "bad"), last = true)
         }
-        OverviewSection("Services", Icons.Outlined.Widgets) {
-            OverviewDetail(Icons.Outlined.Call, "TURN relays", metric("turn", "relays"))
-            OverviewDetail(Icons.Outlined.VpnLock, "Proxy connections", metric("shadowsocks", "connections"))
-            OverviewDetail(Icons.Outlined.Public, "Proxy unique IPs", metric("shadowsocks", "unique_ips"))
-            OverviewDetail(Icons.Outlined.NotificationsNone, "Push notifications", metric("push", "successful_notifications"))
-            OverviewDetail(Icons.Outlined.History, "Message retention", metric("message_retention", "retention"))
+        Section("Services") {
+            Stat(Tint.Green, Icons.Rounded.Call, "TURN relays", metric("turn", "relays"))
+            Stat(Tint.Graphite, Icons.Rounded.VpnLock, "Proxy connections", metric("shadowsocks", "connections"))
+            Stat(Tint.Graphite, Icons.Rounded.Public, "Proxy IPs", metric("shadowsocks", "unique_ips"))
+            Stat(Tint.Green, Icons.Rounded.Notifications, "Push sent", metric("push", "successful_notifications"))
+            Stat(Tint.Yellow, Icons.Rounded.History, "Retention", metric("message_retention", "retention"), last = true)
         }
-        OverviewSection("Connection", Icons.Outlined.Link) {
-            OverviewDetail(Icons.Outlined.Inventory2, "Madmail version", version ?: metric("version"), copyable = true)
+        Section("Connection") {
+            Stat(Tint.Gray, Icons.Rounded.Inventory2, "Version", version ?: metric("version"), copyable = true)
             if (phone) {
-                OverviewDetail(Icons.Outlined.Upload, if (running) "SMTP TLS port" else "Preferred SMTP port", if (running) "11465" else ports.smtp.toString(), copyable = true)
-                OverviewDetail(Icons.Outlined.Download, if (running) "IMAP TLS port" else "Preferred IMAP port", if (running) "11993" else ports.imap.toString(), copyable = true)
-                if (running) OverviewDetail(Icons.Outlined.Lock, "HTTPS port", "18443", copyable = true)
-                OverviewDetail(Icons.Outlined.Shield, if (running) "Access" else "Preferred access", if (running || !standardPorts) "No root required" else "Root")
+                Stat(Tint.Teal, Icons.Rounded.Upload, if (running) "SMTP TLS port" else "Preferred SMTP port", if (running) "11465" else ports.smtp.toString(), copyable = true)
+                Stat(Tint.Teal, Icons.Rounded.Download, if (running) "IMAP TLS port" else "Preferred IMAP port", if (running) "11993" else ports.imap.toString(), copyable = true)
+                if (running) Stat(Tint.Teal, Icons.Rounded.Lock, "HTTPS port", "18443", copyable = true)
+                Stat(Tint.Graphite, Icons.Rounded.Shield, if (running) "Access" else "Preferred access", if (running || !standardPorts) "No root" else "Root")
             } else if (remoteState?.transport == "API") {
-                OverviewDetail(Icons.Outlined.Api, "Admin API", remoteState.apiEndpoint ?: "Not configured", copyable = true)
+                Stat(Tint.Teal, Icons.Rounded.Api, "Admin API", remoteState.apiEndpoint ?: "Not configured", copyable = true)
             } else {
-                OverviewDetail(Icons.Outlined.Dns, "Host", remote!!.host, copyable = true)
-                OverviewDetail(Icons.Outlined.PersonOutline, "User", remote.user, copyable = true)
-                OverviewDetail(Icons.Outlined.SettingsEthernet, "SSH port", remote.port.toString(), copyable = true)
-
+                Stat(Tint.Blue, Icons.Rounded.Dns, "Host", remote!!.host, copyable = true)
+                Stat(Tint.Orange, Icons.Rounded.Person, "User", remote.user, copyable = true)
+                Stat(Tint.Graphite, Icons.Rounded.Terminal, "SSH port", remote.port.toString(), copyable = true)
             }
-            TextButton(onClick = onSettings, contentPadding = PaddingValues(horizontal = 0.dp)) { Icon(Icons.Outlined.Tune, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Connection settings") }
+            NavRow({ TintIcon(Tint.Gray, Icons.Rounded.Tune, size = StatMark) }, "Connection settings", onClick = onSettings)
         }
     }
 }
 
-@Composable
-private fun overviewHealthyColor(): Color = if (isSystemInDarkTheme()) Color(0xFF75D6AF) else Color(0xFF087653)
+private val StatMark = 28.dp
 
+/** Where a stat row's label starts: 14dp padding, the mark, 12dp gap. Dividers and the storage meter align to it. */
+private val StatInset = 54.dp
+
+/** Caption, then the section's rows in a group. A live state rides on the caption's right edge. */
 @Composable
-private fun OverviewSection(title: String, icon: ImageVector, detail: String? = null, content: @Composable ColumnScope.() -> Unit) {
-    val colors = MaterialTheme.colorScheme
+private fun Section(title: String, state: String? = null, content: @Composable ColumnScope.() -> Unit) {
     Column(Modifier.fillMaxWidth()) {
-        Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Icon(icon, null, Modifier.size(22.dp), tint = colors.primary)
-            Text(title, Modifier.weight(1f).semantics { heading() }, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            if (detail != null) Text(detail, style = MaterialTheme.typography.labelMedium, color = if (detail == "Live") overviewHealthyColor() else colors.onSurfaceVariant)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
+            Caption(title, Modifier.weight(1f))
+            state?.let {
+                Row(Modifier.padding(end = 16.dp, bottom = 8.dp).semantics(mergeDescendants = true) {}, verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    if (it == "Live") Icon(Icons.Rounded.CheckCircle, null, Modifier.size(14.dp), tint = Success)
+                    Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
         }
-        HorizontalDivider(color = colors.outlineVariant)
-        Spacer(Modifier.height(6.dp))
-        content()
+        Group(content = content)
     }
 }
 
+/** A label and value with a small mark. Dashes mean no data yet and are never copyable. */
 @Composable
-private fun OverviewDetail(icon: ImageVector, label: String, value: String, copyable: Boolean = false) {
-    val colors = MaterialTheme.colorScheme
-    val context = LocalContext.current
-    val haptics = LocalHapticFeedback.current
-    var copied by remember(value) { mutableStateOf(false) }
-    LaunchedEffect(copied) { if (copied) { delay(1800); copied = false } }
-    val canCopy = copyable && value != "—"
-    val modifier = if (canCopy) Modifier.clickable(role = Role.Button, onClickLabel = "Copy $label") {
-        (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText(label, value))
-        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-        copied = true
-    } else Modifier
-    Row(modifier.fillMaxWidth().heightIn(min = if (copyable) 48.dp else 42.dp).padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Icon(icon, null, Modifier.size(19.dp), tint = colors.onSurfaceVariant)
-        Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
-        Text(if (copied) "Copied" else value, Modifier.weight(.8f).semantics { liveRegion = LiveRegionMode.Polite }, style = MaterialTheme.typography.bodyLarge.copy(fontFeatureSettings = "tnum"), fontWeight = FontWeight.SemiBold, textAlign = TextAlign.End, color = if (copied) overviewHealthyColor() else colors.onSurface)
-        if (copyable) Icon(if (copied) Icons.Outlined.Check else Icons.Outlined.ContentCopy, null, Modifier.size(16.dp), tint = if (canCopy) colors.primary else colors.outline)
-    }
+private fun Stat(tint: Tint, icon: ImageVector, label: String, value: String, copyable: Boolean = false, last: Boolean = false) {
+    ValueRow(label, value, copyable = copyable && value != "—", mark = { TintIcon(tint, icon, size = StatMark) })
+    if (!last) RowDivider(StatInset)
 }

@@ -8,15 +8,35 @@ import android.net.Uri
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.*
+import androidx.compose.material.icons.rounded.BatteryAlert
+import androidx.compose.material.icons.rounded.BatteryFull
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.Inventory2
+import androidx.compose.material.icons.rounded.Link
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -32,30 +52,35 @@ internal fun EngineControls() {
     val context = LocalContext.current
     val engine = remember { LocalEngine.get(context) }
     val state by engine.state.collectAsState()
+    val access = rememberBackgroundAccess()
     var versions by remember { mutableStateOf(false) }
     val start = { context.startForegroundService(Intent(context, HostingService::class.java)); Unit }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { start() }
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        HostingStatus(state.phase)
-        FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Button(onClick = {
-                if (state.phase == EnginePhase.Running) context.startService(Intent(context, HostingService::class.java).setAction("stop"))
-                else if (Build.VERSION.SDK_INT >= 33) permission.launch(Manifest.permission.POST_NOTIFICATIONS) else start()
-            }, enabled = state.phase != EnginePhase.Starting && state.phase != EnginePhase.Stopping && engine.selected != null, modifier = Modifier.heightIn(min = 48.dp)) {
-                Icon(if (state.phase == EnginePhase.Running) Icons.Outlined.StopCircle else Icons.Outlined.PlayArrow, null, Modifier.size(20.dp))
-                Spacer(Modifier.width(8.dp))
-                Text(when (state.phase) { EnginePhase.Running -> "Stop hosting"; EnginePhase.Starting -> "Starting…"; EnginePhase.Stopping -> "Stopping…"; else -> "Start hosting" })
+    Column {
+        Group(Modifier.animateContentSize(tween(300, easing = Emphasized))) {
+            HostingStatus(state.phase)
+            FlowRow(Modifier.fillMaxWidth().padding(start = 60.dp, end = 14.dp, bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                PillButton(when (state.phase) { EnginePhase.Running -> "Stop hosting"; EnginePhase.Starting -> "Starting…"; EnginePhase.Stopping -> "Stopping…"; else -> "Start hosting" }, onClick = {
+                    if (state.phase == EnginePhase.Running) context.startService(Intent(context, HostingService::class.java).setAction("stop"))
+                    else if (Build.VERSION.SDK_INT >= 33) permission.launch(Manifest.permission.POST_NOTIFICATIONS) else start()
+                }, icon = if (state.phase == EnginePhase.Running) Icons.Rounded.Stop else Icons.Rounded.PlayArrow, filled = state.phase != EnginePhase.Running,
+                    enabled = state.phase != EnginePhase.Starting && state.phase != EnginePhase.Stopping && engine.selected != null)
+                PillButton("Versions", onClick = { versions = true }, icon = Icons.Rounded.Inventory2)
             }
-            TextButton(onClick = { versions = true }, modifier = Modifier.heightIn(min = 48.dp)) { Icon(Icons.Outlined.Inventory2, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Versions") }
+            RowDivider(60.dp)
+            BackgroundHostingAccess(access)
         }
-        BackgroundHostingAccess()
-        if (state.error != null) Text(state.error!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+        state.error?.let { Footer(it, MaterialTheme.colorScheme.error) }
+        access.error?.let { Footer(it, MaterialTheme.colorScheme.error) }
     }
     if (versions) EngineVersionsDialog { versions = false }
 }
 
+/** Android's battery exemption for hosting, re-read on every resume so it always shows the real state. */
+internal class BackgroundAccess(val allowed: Boolean, val error: String?, val request: () -> Unit)
+
 @Composable
-internal fun BackgroundHostingAccess() {
+internal fun rememberBackgroundAccess(): BackgroundAccess {
     val context = LocalContext.current
     val power = remember { context.getSystemService(PowerManager::class.java) }
     var allowed by remember { mutableStateOf(power.isIgnoringBatteryOptimizations(context.packageName)) }
@@ -71,18 +96,31 @@ internal fun BackgroundHostingAccess() {
         owner.lifecycle.addObserver(observer)
         onDispose { owner.lifecycle.removeObserver(observer) }
     }
-    TextButton(onClick = {
+    return BackgroundAccess(allowed, error) {
         error = null
         val intent = if (allowed) Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
             else Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${context.packageName}"))
-        runCatching { request.launch(intent) }.onFailure { error = "Open Android Settings → Apps → Madmail → Battery and allow background use." }
-    }, modifier = Modifier.heightIn(min = 48.dp)) {
-        Icon(if (allowed) Icons.Outlined.BatteryFull else Icons.Outlined.BatteryAlert, null, Modifier.size(20.dp))
-        Spacer(Modifier.width(8.dp))
-        Text(if (allowed) "Background access allowed" else "Allow background hosting")
+        runCatching { request.launch(intent) }.onFailure { error = "Allow it in Settings → Apps → Madmail → Battery." }
     }
-    if (!allowed) Text("Keep connections available with the screen off. Uses more battery.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+}
+
+/** Background access as a row inside a group. Errors are the caller's to show under the group. */
+@Composable
+internal fun BackgroundHostingAccess(access: BackgroundAccess = rememberBackgroundAccess()) {
+    Row(Modifier.fillMaxWidth().then(if (access.allowed) Modifier.clickable(role = Role.Button, onClick = access.request) else Modifier).heightIn(min = 60.dp)
+        .padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 12.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        TintIcon(if (access.allowed) Tint.Green else Tint.Orange, if (access.allowed) Icons.Rounded.BatteryFull else Icons.Rounded.BatteryAlert)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(if (access.allowed) "Background access" else "Allow background hosting", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text(if (access.allowed) "Works with the screen off." else "Works with the screen off. Uses more battery.",
+                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (access.allowed) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Icon(Icons.Rounded.CheckCircle, null, Modifier.size(16.dp), tint = Success)
+            Text("Allowed", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        } else PillButton("Allow", onClick = access.request)
+    }
 }
 
 @Composable
@@ -118,49 +156,68 @@ private fun EngineVersionsDialog(onDismiss: () -> Unit) {
             finally { busy = false }
         }
     }
-    AlertDialog(onDismissRequest = { if (!busy) onDismiss() }, title = { Text("Madmail versions") }, text = {
-        Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                Text("themadorg/madmail", Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
+    val packageField = remember { FocusRequester() }
+    val canInstall = !busy && state.phase in listOf(EnginePhase.Stopped, EnginePhase.Failed)
+    AlertDialog(onDismissRequest = { if (!busy) onDismiss() }, containerColor = panelColor(), shape = RoundedCornerShape(28.dp),
+        title = { Text("Madmail versions", fontWeight = FontWeight.SemiBold) }, text = {
+        Column(Modifier.heightIn(max = 460.dp).verticalScroll(rememberScrollState()).animateContentSize(tween(300, easing = Emphasized))) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("themadorg/madmail", Modifier.weight(1f).padding(start = 16.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 TextButton(onClick = { refresh++ }, enabled = !loading && !busy) { Text("Refresh") }
             }
-            if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
-            if (loadError != null) Text(loadError!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            if (loading) EngineProgress()
             val versions = (engine.versions.map { it.version } + releases.map { it.version }).distinct()
                 .sortedWith { a, b -> compareVersions(b, a) }
-            versions.forEach { version ->
-                val installed = engine.versions.find { it.version == version }
-                val release = releases.find { it.version == version }
-                val androidPackage = release?.androidPackage
-                Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                        Text(version, style = MaterialTheme.typography.titleMedium)
-                        Text(when {
-                            selected == version -> "Selected · Installed"
-                            installed != null -> "Installed"
-                            androidPackage != null -> "Android package available"
-                            else -> "No Android package"
-                        }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (versions.isNotEmpty()) Group {
+                versions.forEachIndexed { index, version ->
+                    val installed = engine.versions.find { it.version == version }
+                    val release = releases.find { it.version == version }
+                    val androidPackage = release?.androidPackage
+                    if (index > 0) RowDivider(60.dp)
+                    InfoRow(if (selected == version) Tint.Green else Tint.Gray, if (selected == version) Icons.Rounded.CheckCircle else Icons.Rounded.Inventory2, version, when {
+                        selected == version -> "In use"
+                        installed != null -> "Installed"
+                        androidPackage != null -> "Available"
+                        else -> "Unavailable"
+                    }) {
+                        if (installed != null && selected != version) PillButton("Select", onClick = {
+                            scope.launch {
+                                runCatching { withContext(Dispatchers.IO) { engine.select(installed) } }
+                                    .onSuccess { selected = version }.onFailure { error = it.message }
+                            }
+                        }, enabled = canInstall)
+                        else if (installed == null && androidPackage != null) PillButton("Download", onClick = { download(androidPackage.url) }, enabled = !busy)
                     }
-                    if (installed != null && selected != version) TextButton(onClick = {
-                        scope.launch {
-                            runCatching { withContext(Dispatchers.IO) { engine.select(installed) } }
-                                .onSuccess { selected = version }.onFailure { error = it.message }
-                        }
-                    }, enabled = !busy && state.phase in listOf(EnginePhase.Stopped, EnginePhase.Failed)) { Text("Select") }
-                    else if (installed == null && androidPackage != null) TextButton(onClick = { download(androidPackage.url) }, enabled = !busy) { Text("Download") }
                 }
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             }
-            if (!loading && loadError == null && releases.isEmpty()) Text("No published stable releases found.", style = MaterialTheme.typography.bodySmall)
-            if (busy) { LinearProgressIndicator(Modifier.fillMaxWidth()); Text("Downloading & verifying…", style = MaterialTheme.typography.bodySmall) }
-            if (stagedVersion != null) Button(onClick = { runCatching { updates.install() }.onFailure { error = it.message } }, enabled = !busy && state.phase in listOf(EnginePhase.Stopped, EnginePhase.Failed)) { Text("Install $stagedVersion") }
-            if (error != null) Text(error!!, color = MaterialTheme.colorScheme.error)
-            TextButton(onClick = { showPackageLink = !showPackageLink }, enabled = !busy) { Text(if (showPackageLink) "Hide package link" else "Use a package link") }
-            if (showPackageLink) {
-                OutlinedTextField(value = updateUrl, onValueChange = { updateUrl = it }, label = { Text("Signed Android update URL") }, singleLine = true, enabled = !busy)
-                TextButton(onClick = { download(updateUrl) }, enabled = !busy && updateUrl.startsWith("https://")) { Text("Download update") }
+            loadError?.let { Footer(it, MaterialTheme.colorScheme.error) }
+            if (!loading && loadError == null && releases.isEmpty()) Footer("No releases found.")
+            if (busy) { Spacer(Modifier.height(12.dp)); EngineProgress(); Footer("Downloading…") }
+            stagedVersion?.let { staged ->
+                Spacer(Modifier.height(16.dp))
+                PillButton("Install $staged", onClick = { runCatching { updates.install() }.onFailure { error = it.message } }, filled = true, wide = true, enabled = canInstall)
             }
+            error?.let { Footer(it, MaterialTheme.colorScheme.error) }
+            Spacer(Modifier.height(20.dp))
+            Group {
+                ActionRow(if (showPackageLink) "Hide link" else "Install from link", { showPackageLink = !showPackageLink }, enabled = !busy, icon = Icons.Rounded.Link)
+                if (showPackageLink) {
+                    RowDivider(16.dp)
+                    FieldRow("URL", updateUrl, { if (!busy) updateUrl = it }, "https://…", packageField, fieldKeyboard(KeyboardType.Uri, ImeAction.Done),
+                        { if (!busy && updateUrl.startsWith("https://")) download(updateUrl) })
+                    RowDivider(16.dp)
+                    ActionRow("Download", { download(updateUrl) }, enabled = !busy && updateUrl.startsWith("https://"), icon = Icons.Rounded.Download)
+                }
+            }
+            if (showPackageLink) Footer("Signed update URL.")
         }
     }, confirmButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text("Close") } })
+}
+
+/** A thin rounded progress line, like the storage meter. */
+@Composable
+private fun EngineProgress(modifier: Modifier = Modifier) {
+    LinearProgressIndicator(modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).height(4.dp).clip(CircleShape),
+        color = MaterialTheme.colorScheme.primary, trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f), strokeCap = StrokeCap.Round,
+        gapSize = 0.dp)
 }

@@ -8,6 +8,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.json.JSONObject
+import org.madmail.mobile.core.PhoneMailDomain
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.InetSocketAddress
@@ -42,51 +43,40 @@ internal class LocalEngine private constructor(private val context: Context) {
     suspend fun select(version: EngineVersion) = mutex.withLock {
         check(process == null) { "Stop hosting before changing versions." }
         val last = prefs.getString("lastStarted", null)
-        check(last == null || compareVersions(version.version, last) >= 0) { "Older versions require restoring a matching backup. Server data is never downgraded automatically." }
+        check(last == null || compareVersions(version.version, last) >= 0) { "Restore a matching backup to use an older version." }
         check(version in versions)
-        check(prefs.edit().putString("selected", version.version).commit()) { "Unable to save the selected version." }
+        check(prefs.edit().putString("selected", version.version).commit()) { "Couldn’t save the version." }
     }
 
     suspend fun start() = mutex.withLock { startLocked() }
     private suspend fun startLocked() {
         if (process != null) return
-        val version = selected ?: error("This device has no compatible packaged engine.")
+        val version = selected ?: error("No compatible engine for this device.")
         mutable.value = EngineState(EnginePhase.Starting, version.version)
         try {
             val standard = context.getSharedPreferences("server-settings-phone", Context.MODE_PRIVATE).getBoolean("root_ports", false)
-            check(!standard) { "Choose unprivileged ports in Hosting preferences to start on this device." }
+            check(!standard) { "Turn off Standard ports to host on this phone." }
             val binary = File(context.applicationInfo.nativeLibraryDir, version.file)
-            check(sha256(binary) == version.sha256) { "Engine verification failed. Reinstall this app from a trusted build." }
+            check(sha256(binary) == version.sha256) { "Engine check failed. Reinstall from a trusted build." }
             val previous = prefs.getString("lastStarted", null)
-            check(previous == null || compareVersions(version.version, previous) >= 0) { "This data was opened by a newer Madmail version. Restore a matching backup before downgrading." }
+            check(previous == null || compareVersions(version.version, previous) >= 0) { "Data is from a newer version. Restore a matching backup." }
             if (previous != null && previous != version.version && dataDir.exists()) {
                 val backup = File(context.filesDir, "madmail/backups/${System.currentTimeMillis()}-$previous")
                 val required = dataDir.walkTopDown().filter { it.isFile }.sumOf { it.length() }
-                check(context.filesDir.usableSpace > required + 64L * 1024 * 1024) { "Free more space for the pre-update backup." }
-                check(dataDir.copyRecursively(File(backup, "data"), overwrite = false)) { "Unable to back up server data." }
+                check(context.filesDir.usableSpace > required + 64L * 1024 * 1024) { "Free up space for the backup." }
+                check(dataDir.copyRecursively(File(backup, "data"), overwrite = false)) { "Couldn’t back up server data." }
                 File(dataDir.parentFile, "chatmail.toml").takeIf { it.exists() }?.copyTo(File(backup, "chatmail.toml"))
                 File(backup, "version").writeText(previous)
             }
             dataDir.mkdirs()
             val config = File(dataDir.parentFile, "chatmail.toml")
-            if (!config.exists()) config.writeText("""
-                hostname = "madmail.local"
-                primary_domain = "madmail.local"
-                tls_mode = "self_signed"
-                auth_auto_create = true
-                smtp_listen = "127.0.0.1:1125"
-                submission_tls_listen = "0.0.0.0:11465"
-                imap_tls_listen = "0.0.0.0:11993"
-                http_listen = "127.0.0.1:18080"
-                http_tls_listen = "0.0.0.0:18443"
-                turn_enable = false
-            """.trimIndent())
+            mailHost = prepareConfig(config)
             // Preflight before launching avoids mistaking another listener for this engine.
             for (port in listOf(1125, 11465, 11993, 18080, 18443)) {
                 java.net.ServerSocket().use { it.reuseAddress = true; it.bind(InetSocketAddress("0.0.0.0", port)) }
             }
             // A new version may migrate on first boot. Record before launch; never silently roll it back.
-            check(prefs.edit().putString("lastStarted", version.version).commit()) { "Unable to save the data version before startup." }
+            check(prefs.edit().putString("lastStarted", version.version).commit()) { "Couldn’t save the data version." }
             val child = processOwner.submit<Process> { ProcessBuilder(File(context.applicationInfo.nativeLibraryDir, "libengine_launcher.so").path,
                 binary.path, "--config", config.path, "--state-dir", dataDir.path, "run")
                 .directory(dataDir).redirectErrorStream(true).start() }.get()
@@ -102,7 +92,7 @@ internal class LocalEngine private constructor(private val context: Context) {
                     if (overview == null) delay(500)
                 }
             }
-            check(overview != null) { "Madmail did not become ready. Check that its ports are available." }
+            check(overview != null) { "Madmail didn’t start. Check that its ports are free." }
             mutable.value = EngineState(EnginePhase.Running, version.version, overview = overview)
             monitor = scope.launch {
                 while (isActive && child.isAlive) {
@@ -110,7 +100,7 @@ internal class LocalEngine private constructor(private val context: Context) {
                     if (!child.isAlive) break
                     val update = runCatching { readOverview() }
                     if (!isActive) return@launch
-                    mutable.value = mutable.value.copy(overview = update.getOrNull(), error = if (update.isFailure) "Server is running; statistics are temporarily unavailable." else null)
+                    mutable.value = mutable.value.copy(overview = update.getOrNull(), error = if (update.isFailure) "Statistics unavailable." else null)
                 }
                 if (isActive) {
                     mutex.withLock {
@@ -125,19 +115,58 @@ internal class LocalEngine private constructor(private val context: Context) {
         }
     }
 
+    /**
+     * Writes the phone's guest IP as the mail domain and returns it. Every earlier domain stays in
+     * local_domains, so older accounts keep signing in and receiving mail. Returns null when an upgraded
+     * install has no IP yet; it keeps its old config until a later start finds one.
+     */
+    private fun prepareConfig(config: File): String? {
+        val old = config.takeIf { it.exists() }?.readText()
+        val backups = File(context.filesDir, "madmail/backups")
+        // The history lives only in this file. If it no longer parses, recover it from the newest domain backup rather than dropping it.
+        val (previousPrimary, previousLocals) = PhoneMailDomain.previous(old).takeIf { old == null || it.first != null }
+            ?: domainBackups(backups).asReversed().asSequence().map { PhoneMailDomain.previous(File(it, "chatmail.toml").takeIf(File::isFile)?.readText()) }
+                .firstOrNull { it.first != null }
+            ?: error("Can’t read the server config. Restore it from a backup.")
+        val saved = context.getSharedPreferences("invite-phone", Context.MODE_PRIVATE).getString("origin", null)
+        val ip = PhoneMailDomain.resolve(saved, GuestNetworks.phone(context), previousPrimary)
+            ?: if (old != null && PhoneMailDomain.previous(old).first != null) return null
+            else error("Connect to Wi-Fi, a hotspot or a VPN.")
+        val rendered = PhoneMailDomain.render(ip, previousPrimary, previousLocals)
+        if (rendered == old) return ip
+        if (old != null) {
+            val backup = File(backups, "${System.currentTimeMillis()}-domain").apply { mkdirs() }
+            File(backup, "chatmail.toml").writeText(old)
+            // Self-signed certificates are generated only when missing. Copy the pair aside, then remove both.
+            if (previousPrimary != "[$ip]") {
+                val pair = listOf("fullchain.pem", "privkey.pem").map { File(dataDir, "certs/$it") }.filter(File::exists)
+                pair.forEach { it.copyTo(File(backup, it.name), overwrite = true) }
+                pair.forEach { check(it.delete()) { "Couldn’t replace the certificate." } }
+            }
+            // Keep the first backup (the original domain) and the five newest.
+            domainBackups(backups).let { all -> all.drop(1).dropLast(5).forEach { it.deleteRecursively() } }
+        }
+        val temporary = File(config.parentFile, "chatmail.toml.tmp")
+        java.io.FileOutputStream(temporary).use { it.write(rendered.toByteArray()); it.fd.sync() }
+        check(temporary.renameTo(config)) { "Couldn’t update the server address." }
+        return ip
+    }
+    private fun domainBackups(backups: File) = backups.listFiles { file -> file.isDirectory && file.name.endsWith("-domain") }.orEmpty()
+        .sortedBy { it.name.substringBefore('-').toLongOrNull() ?: 0L }
+
     suspend fun stop() = mutex.withLock {
         mutable.value = mutable.value.copy(phase = EnginePhase.Stopping)
         monitor?.cancel(); monitor = null
         val graceful = terminate()
         mutable.value = EngineState(if (graceful) EnginePhase.Stopped else EnginePhase.Failed, selected?.version,
-            if (graceful) null else "Madmail needed a forced stop. Check server data before updating.")
+            if (graceful) null else "Madmail was force-stopped. Check data before updating.")
     }
     private fun terminate(): Boolean {
         val child = process ?: return true
         child.destroy()
         val graceful = child.waitFor(15, TimeUnit.SECONDS)
         if (!graceful) { child.destroyForcibly(); child.waitFor(5, TimeUnit.SECONDS) }
-        if (!child.isAlive) process = null
+        if (!child.isAlive) { process = null; mailHost = null }
         return graceful
     }
     private fun readOverview(): JSONObject {
@@ -148,13 +177,14 @@ internal class LocalEngine private constructor(private val context: Context) {
         check(mutable.value.phase == EnginePhase.Running) { "Start hosting to manage settings." }
         AdminApi.request("http://127.0.0.1:18080/api/admin", File(dataDir, "admin_token").readText().trim(), resource, method, body)
     }
-    suspend fun restart() = mutex.withLock {
+    suspend fun restart() = mutex.withLock { restartLocked() }
+    private suspend fun restartLocked() {
         check(mutable.value.phase == EnginePhase.Running) { "Start hosting first." }
         mutable.value = mutable.value.copy(phase = EnginePhase.Stopping)
         monitor?.cancel(); monitor = null
         if (!terminate()) {
-            mutable.value = mutable.value.copy(phase = EnginePhase.Failed, error = "The server did not stop cleanly. Start it again from Overview.")
-            error("Server restart stopped after an unclean shutdown.")
+            mutable.value = mutable.value.copy(phase = EnginePhase.Failed, error = "Server didn’t stop cleanly. Start it from Overview.")
+            error("Restart failed after an unclean stop.")
         }
         startLocked()
     }
@@ -162,12 +192,30 @@ internal class LocalEngine private constructor(private val context: Context) {
         check(mutable.value.phase == EnginePhase.Running) { "Start hosting to manage invitations." }
         AdminApi.request("http://127.0.0.1:18080/api/admin", File(dataDir, "admin_token").readText().trim(), "/admin/registration-token", method, body)
     }
-    suspend fun createGuest(token: String): JSONObject = mutex.withLock {
+    /** [created] sees the account as soon as the server has made it, before the readiness check runs. */
+    suspend fun createGuest(token: String, created: (JSONObject) -> Unit = {}): JSONObject = mutex.withLock {
         check(mutable.value.phase == EnginePhase.Running) { "Start hosting to create an account." }
         AdminApi.newAccount("http://127.0.0.1:18080/new", token).also {
+            created(it)
             LocalAccountReadiness.verify(it, File(dataDir, "certs/fullchain.pem"))
         }
     }
+    /** The IP the running engine uses as its mail domain. */
+    @Volatile var mailHost: String? = null
+        private set
+    /**
+     * Moves the running engine onto [ip] as its mail domain. Returns false only when [ip] is on this phone
+     * but the engine could not switch to it. The restart runs in the engine's scope, so leaving a screen never
+     * cancels it halfway. Callers save the guest origin first; the start reads it.
+     */
+    suspend fun useMailHost(ip: String): Boolean = scope.async {
+        mutex.withLock {
+            // An address that is not on this phone cannot become its mail domain; restarting would not change it.
+            if (mutable.value.phase != EnginePhase.Running || mailHost == ip || GuestNetworks.phone(context).none { it.host == ip }) return@withLock
+            restartLocked()
+        }
+        mailHost == ip || GuestNetworks.phone(context).none { it.host == ip }
+    }.await()
     suspend fun browserInviteHost(origin: String): String? = mutex.withLock {
         check(mutable.value.phase == EnginePhase.Running)
         AdminApi.browserInviteHost("http://127.0.0.1:18080/inv/address-check", origin)
