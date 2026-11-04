@@ -6,8 +6,6 @@ A Kotlin Android host and management UI for a local Madmail server. Guests use D
 
 ## Screenshots
 
-Unedited captures from a Pixel 6a running the current development build. The status bar uses Android's demo mode for a fixed clock; no account QR, password or token is shown.
-
 <p>
   <img src="assets/screenshots/onboarding.png" width="200" alt="First-run intro: the title decodes out of falling glyphs above a terminal line">
   <img src="assets/screenshots/phone-setup.png" width="200" alt="Phone setup step with a live network check and background access">
@@ -21,7 +19,6 @@ Unedited captures from a Pixel 6a running the current development build. The sta
   <img src="assets/screenshots/servers.png" width="200" alt="Long-press on a server: the row lifts and shows its quick actions">
 </p>
 
-The app has four tabs: **Home** (power, versions, connection), **Stats** (live counters, storage and federation), **Invite** and **Settings**. The button beside them switches servers; long-press a server in that list for quick actions (open a tab, rename, copy its address, remove).
 
 ## Current implementation
 
