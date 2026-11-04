@@ -1,10 +1,14 @@
 # Device screenshots
 
-Captured directly from the physical Pixel 6a (Android 17) on 2026-11-01 at 1080 × 2400. These are unedited device captures, not mockups.
+Captured directly from the physical Pixel 6a on 2026-11-04 at 1080 × 2400 from the development build. These are unedited device captures, not mockups. The status bar clock and signal come from Android's System UI demo mode; app icons in the status bar are the phone's own.
 
-- `overview.png`: running phone server with real activity counters.
-- `servers.png`: selected phone and the existing `auth-preview.invalid` test profile. This is not evidence of a production VPS connection.
-- `invite.png`: invitation setup, with no active account QR or bearer token exposed. The displayed CGNAT-range address belongs to the local Wi-Fi network; it does not prove a Tailscale connection.
-- `settings.png`: management sections and the actual pending-restart notice.
+- `onboarding.png`: first intro page after its title has decoded, with the terminal line typed out. Opened with Debug menu → Replay onboarding.
+- `phone-setup.png`: the phone step of setup, with the live "Share a network" check connected over Wi-Fi.
+- `overview.png`: Home with hosting live on Wi-Fi.
+- `mobile-data.png`: Home with Wi-Fi off. Hosting was still on, so the dot turns orange and the no-network notice appears. Wi-Fi was turned back on right after.
+- `statistics.png`: the Stats tab a few seconds after start, so counters are still zero.
+- `invite.png`: Invite with no account QR or invitation link open.
+- `settings.png`: the Settings root for the phone.
+- `servers.png`: the server list with the long-press menu open on the phone.
 
-The installed development build includes app lock and its immediate-background fix. Later release-pipeline and launcher-logo changes do not alter these in-app surfaces; no APK update or server restart was performed for this capture. App lock was temporarily disabled by the device owner, and the re-enable authentication prompt was opened after capture. No notification contents, account passwords, API tokens or SSH private keys appear in these images.
+The addresses shown are the phone's local Wi-Fi address. No notification contents, account passwords, API tokens or SSH private keys appear in these images.

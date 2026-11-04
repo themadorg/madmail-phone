@@ -5,6 +5,7 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
@@ -17,6 +18,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -25,13 +27,20 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.positionOnScreen
+import androidx.compose.ui.unit.toSize
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -65,8 +74,13 @@ private fun markIcon(mark: String, phone: Boolean) = when (mark) {
 }
 
 @Composable
-internal fun ServerPicker(selectedId: String, remotes: List<RemoteServer>, identities: Map<String, ServerIdentity>, phoneConfigured: Boolean, onSelect: (String) -> Unit, onAdd: () -> Unit, onSave: (String, ServerIdentity) -> Unit, onEditing: (Boolean) -> Unit) {
+internal fun ServerPicker(selectedId: String, remotes: List<RemoteServer>, identities: Map<String, ServerIdentity>, phoneConfigured: Boolean, onSelect: (String) -> Unit, onAdd: () -> Unit, onSave: (String, ServerIdentity) -> Unit, onEditing: (Boolean) -> Unit,
+    onOpen: (String, Int) -> Unit, onRemove: (String) -> Unit) {
     var editing by remember { mutableStateOf<String?>(null) }
+    var peek by remember { mutableStateOf<Pair<String, Rect>?>(null) }
+    var removing by remember { mutableStateOf<String?>(null) }
+    val clipboard = LocalClipboardManager.current
+    val toaster = LocalToaster.current
     var editMode by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -86,6 +100,11 @@ internal fun ServerPicker(selectedId: String, remotes: List<RemoteServer>, ident
         }
     } else {
         Column(Modifier.fillMaxWidth().imePadding().animateContentSize(tween(300, easing = Emphasized)).padding(bottom = 24.dp)) {
+            removing?.let { id ->
+                val name = identities[id]?.name?.ifBlank { null } ?: entries.firstOrNull { it.first == id }?.second ?: id
+                KitDialog("Remove $name?", "Its saved sign-in and invitations on this phone are deleted. The server itself keeps running.", "Remove",
+                    onConfirm = { removing = null; onRemove(id) }, onDismiss = { removing = null })
+            }
             SheetHeader("Servers")
             Column(Modifier.fillMaxWidth().padding(horizontal = GroupGutter)) {
                 if (entries.size > 5) {
@@ -97,8 +116,28 @@ internal fun ServerPicker(selectedId: String, remotes: List<RemoteServer>, ident
                     Group(Modifier.selectableGroup()) {
                         visible.forEach { (id, fallback, address) ->
                             val identity = identities[id] ?: ServerIdentity()
-                            ServerRow(identity, id == "phone", identity.name.ifBlank { fallback }, if (editMode) "Name and icon" else address,
-                                selected = id == selectedId, editMode = editMode) { if (editMode) editing = id else onSelect(id) }
+                            val title = identity.name.ifBlank { fallback }
+                            var bounds by remember { mutableStateOf(Rect.Zero) }
+                            ServerRow(identity, id == "phone", title, if (editMode) "Name and icon" else address,
+                                selected = id == selectedId, editMode = editMode, Modifier.onGloballyPositioned { bounds = Rect(it.positionOnScreen(), it.size.toSize()) },
+                                onLongClick = if (editMode) null else ({ peek = id to bounds })) { if (editMode) editing = id else onSelect(id) }
+                            peek?.takeIf { it.first == id }?.let { (_, anchor) ->
+                                PeekMenu(anchor, buildList {
+                                    if (id != selectedId) add(MenuAction("Open", Icons.AutoMirrored.Rounded.OpenInNew) { onSelect(id) })
+                                    add(MenuAction("Statistics", Icons.Rounded.BarChart) { onOpen(id, 1) })
+                                    add(MenuAction("Invite", Icons.Rounded.QrCode2) { onOpen(id, 2) })
+                                    add(MenuAction("Settings", Icons.Rounded.Settings) { onOpen(id, 3) })
+                                    add(MenuAction("Name and icon", Icons.Rounded.Edit) { editing = id })
+                                    add(MenuAction("Copy address", Icons.Rounded.ContentCopy) {
+                                        val origin = if (id == "phone") localInviteOrigin(context) else fallback
+                                        if (origin.isBlank()) toaster.show("No shared network.", error = true)
+                                        else { clipboard.setText(AnnotatedString(origin)); toaster.show("Address copied.") }
+                                    })
+                                    if (id != "phone") add(MenuAction("Remove server", Icons.Rounded.Delete, destructive = true) { removing = id })
+                                }, onDismiss = { peek = null }) {
+                                    ServerRow(identity, id == "phone", title, address, selected = id == selectedId, editMode = false, Modifier, null) {}
+                                }
+                            }
                             // Server rows: 14dp padding, 36dp mark, 14dp gap, so the text starts at 64dp.
                             RowDivider(64.dp)
                         }
@@ -115,8 +154,12 @@ internal fun ServerPicker(selectedId: String, remotes: List<RemoteServer>, ident
 }
 
 @Composable
-private fun ServerRow(identity: ServerIdentity, phone: Boolean, title: String, detail: String, selected: Boolean, editMode: Boolean, onClick: () -> Unit) {
-    Row(Modifier.fillMaxWidth().selectable(selected = selected && !editMode, role = if (editMode) Role.Button else Role.RadioButton, onClick = rememberTap(onClick))
+private fun ServerRow(identity: ServerIdentity, phone: Boolean, title: String, detail: String, selected: Boolean, editMode: Boolean,
+    modifier: Modifier = Modifier, onLongClick: (() -> Unit)? = null, onClick: () -> Unit) {
+    val tap = rememberTap(onClick)
+    Row(modifier.fillMaxWidth().semantics { this.selected = selected && !editMode }
+        .combinedClickable(role = if (editMode) Role.Button else Role.RadioButton, onLongClickLabel = "More actions", onClick = tap,
+            onLongClick = onLongClick)
         .heightIn(min = 60.dp).padding(start = 14.dp, end = if (editMode) 10.dp else 14.dp, top = 12.dp, bottom = 12.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
         ServerMark(identity.mark, phone, size = 36.dp)

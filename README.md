@@ -6,14 +6,22 @@ A Kotlin Android host and management UI for a local Madmail server. Guests use D
 
 ## Screenshots
 
-Real captures from a Pixel 6a. The server picker includes a saved test connection; the Invite screen shows setup without exposing a live account QR.
+Unedited captures from a Pixel 6a running the current development build. The status bar uses Android's demo mode for a fixed clock; no account QR, password or token is shown.
 
 <p>
-  <img src="assets/screenshots/overview.png" width="220" alt="Overview with running phone server and live activity counters">
-  <img src="assets/screenshots/servers.png" width="220" alt="Server picker with the phone and a saved test SSH connection">
-  <img src="assets/screenshots/invite.png" width="220" alt="Invitation setup and guest-facing address">
-  <img src="assets/screenshots/settings.png" width="220" alt="Per-server settings grouped into management sections">
+  <img src="assets/screenshots/onboarding.png" width="200" alt="First-run intro: the title decodes out of falling glyphs above a terminal line">
+  <img src="assets/screenshots/phone-setup.png" width="200" alt="Phone setup step with a live network check and background access">
+  <img src="assets/screenshots/overview.png" width="200" alt="Home: server card with a live status dot, the hosting switch and connection details">
+  <img src="assets/screenshots/mobile-data.png" width="200" alt="Home on mobile data: an orange status and a notice with Wi-Fi and hotspot shortcuts">
 </p>
+<p>
+  <img src="assets/screenshots/statistics.png" width="200" alt="Statistics tab with live activity, messages and storage">
+  <img src="assets/screenshots/invite.png" width="200" alt="Invite: guest-facing address, account QR and invitations">
+  <img src="assets/screenshots/settings.png" width="200" alt="Settings grouped into server, delivery and advanced sections">
+  <img src="assets/screenshots/servers.png" width="200" alt="Long-press on a server: the row lifts and shows its quick actions">
+</p>
+
+The app has four tabs: **Home** (power, versions, connection), **Stats** (live counters, storage and federation), **Invite** and **Settings**. The button beside them switches servers; long-press a server in that list for quick actions (open a tab, rename, copy its address, remove).
 
 ## Current implementation
 
@@ -33,9 +41,11 @@ Phone ports: SMTP TLS **11465**, IMAP TLS **11993**, HTTPS **18443**. The intern
 
 See [the product and architecture brainstorm](docs/architecture.md) for scope, root design, compatibility gates, and implementation milestones.
 
-## Release candidates
+## Releases
 
-See [release setup and signing](docs/releasing.md) for CI, protected signing credentials, artifacts, versioning and acceptance gates. `release.properties` owns the distribution version. GitHub workflows build artifacts without publishing automatically.
+Download the latest APK from [GitHub Releases](https://github.com/themadorg/madmail-phone/releases). Every release is signed with the same key; the certificate SHA-256 is `3a03365df303f177286f3abdcda98f9907a4648e94b54e7a88027ed52912b81f`.
+
+Pushing a `v*` tag that matches `release.properties` makes GitHub Actions test, build, sign, package and publish the release, using the notes in `docs/releases/<version>.md`. Versions before 1.0 are published as prereleases. See [release setup and signing](docs/releasing.md) for the signing secrets, versioning and acceptance gates.
 
 ## Build
 

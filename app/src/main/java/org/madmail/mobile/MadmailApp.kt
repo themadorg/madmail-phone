@@ -5,6 +5,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.QrCode2
 import androidx.compose.material.icons.outlined.Settings
@@ -48,6 +49,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.core.content.edit
 import dev.chrisbanes.haze.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -60,6 +62,9 @@ internal fun MadmailApp() {
     var setup by rememberSaveable { mutableStateOf(false) }
     var phoneSetup by rememberSaveable { mutableStateOf(false) }
     var debug by remember { mutableStateOf(false) }
+    // Set from the debug menu to walk the first-run pages again without clearing the phone's server.
+    var replayIntro by remember { mutableStateOf(false) }
+    LaunchedEffect(setup) { if (!setup) replayIntro = false }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val profiles = remember { ServerProfiles(context) }
@@ -73,7 +78,23 @@ internal fun MadmailApp() {
     val identity = identities[serverId] ?: org.madmail.mobile.core.ServerIdentity()
 
     val workspace = remember { ServerWorkspace() }
+    val toaster = LocalToaster.current
     val selectServer: (String) -> Unit = { selectedId = it; profiles.select(it) }
+    val removeServer: (String) -> Unit = { id ->
+        val saved = remotes.firstOrNull { it.id == id }
+        // Unused account QRs are deleted first, while the server can still be reached.
+        val cleanup = org.madmail.mobile.engine.AccountQrRotation.forget(context, id, saved)
+        saved?.let { scope.launch(Dispatchers.IO) { cleanup.join(); org.madmail.mobile.engine.RemoteEngine.get(context, it).disconnect() } }
+        workspace.forget(id)
+        org.madmail.mobile.engine.InvitationCreation.forget(id)
+        org.madmail.mobile.engine.SettingsController.forget(id)
+        org.madmail.mobile.engine.RemoteCredentials(context, id).delete()
+        context.getSharedPreferences("ssh-host-keys", android.content.Context.MODE_PRIVATE).edit { remove(id) }
+        context.getSharedPreferences("remote-options-$id", android.content.Context.MODE_PRIVATE).edit { clear() }
+        profiles.remove(id)
+        remotes = profiles.load()
+        selectedId = profiles.selected()
+    }
 
     val haze = remember { HazeState() }
     val localState by org.madmail.mobile.engine.LocalEngine.get(context).state.collectAsState()
@@ -84,12 +105,12 @@ internal fun MadmailApp() {
 
     val colors = MaterialTheme.colorScheme
     BackHandler(selectedId.isNotBlank() && page != 0 && !setup && !chooseServer) { page = 0; openHostingPreferences = false }
-    BackHandler(phoneSetup || setup) { if (phoneSetup) phoneSetup = false else setup = false }
+    BackHandler(phoneSetup || setup) { if (phoneSetup) phoneSetup = false else { setup = false; replayIntro = false } }
     Surface(color = colors.background) {
         Box(Modifier.fillMaxSize()) {
             if (selectedId.isBlank() || setup) {
-                HostSetup(phoneSetup, phoneConfigured, identities["phone"]?.name.orEmpty(), firstRun = selectedId.isBlank(), onPhone = { phoneSetup = true },
-                    onBack = { phoneSetup = false }, onCancel = if (selectedId.isNotBlank()) ({ setup = false; phoneSetup = false }) else null,
+                HostSetup(phoneSetup, phoneConfigured, identities["phone"]?.name.orEmpty(), firstRun = selectedId.isBlank() || replayIntro, onPhone = { phoneSetup = true },
+                    onBack = { phoneSetup = false }, onCancel = if (selectedId.isNotBlank()) ({ setup = false; phoneSetup = false; replayIntro = false }) else null,
                     onComplete = { name ->
                         val updated = (identities["phone"] ?: org.madmail.mobile.core.ServerIdentity()).copy(name = name)
                         identityStore.save("phone", updated)
@@ -126,7 +147,8 @@ internal fun MadmailApp() {
                         .padding(horizontal = GroupGutter).padding(top = 28.dp, bottom = 140.dp),
                         verticalArrangement = Arrangement.spacedBy(24.dp)) {
                         // Same shape as Settings: the page is the title, the server rides under it.
-                        if (displayedPage == 1) PageTitle("Invite", displayedName)
+                        if (displayedPage == 1) PageTitle("Statistics", displayedName)
+                        if (displayedPage == 2) PageTitle("Invite", displayedName)
                         key(displayedId) {
                         // Finish cleaning up account QRs from earlier sessions without waiting for a visit to Invite.
                         LaunchedEffect(Unit) { org.madmail.mobile.engine.AccountQrRotation.get(context, displayedId, displayedRemote).tidy() }
@@ -134,27 +156,18 @@ internal fun MadmailApp() {
                         when (displayedPage) {
 
                             0 -> {
-                                OverviewScreen(displayedName, displayedIdentity, displayedRemote, onSettings = { openHostingPreferences = displayedRemote == null; page = 2 }) {
+                                OverviewScreen(displayedName, displayedIdentity, displayedRemote, onSettings = { openHostingPreferences = displayedRemote == null; page = 3 }) {
                                     // Invitations and account QRs live on the Invite page; Overview only links to it.
                                     Column {
                                         Caption("Invite")
-                                        Group { NavRow({ TintIcon(Tint.Purple, Icons.Rounded.QrCode2) }, "Connect another device") { page = 1 } }
+                                        Group { NavRow({ TintIcon(Tint.Purple, Icons.Rounded.QrCode2) }, "Connect another device") { page = 2 } }
                                     }
                                 }
                             }
-                            1 -> RegistrationScreen(displayedId, displayedName, displayedRemote, workspace.invitation(displayedId)) { workspace.updateInvitation(displayedId, it) }
+                            1 -> StatisticsScreen(displayedRemote) { page = 0 }
+                            2 -> RegistrationScreen(displayedId, displayedName, displayedRemote, workspace.invitation(displayedId)) { workspace.updateInvitation(displayedId, it) }
                             else -> ServerSettingsScreen(displayedId, displayedName, displayedRemote, initiallyShowHosting = openHostingPreferences, onNavigate = { scope.launch { displayedScroll.scrollTo(0) } }) {
-                                // Unused account QRs are deleted first, while the server can still be reached.
-                                val cleanup = org.madmail.mobile.engine.AccountQrRotation.forget(context, displayedId, displayedRemote)
-                                displayedRemote?.let { saved -> scope.launch(Dispatchers.IO) { cleanup.join(); org.madmail.mobile.engine.RemoteEngine.get(context, saved).disconnect() } }
-                                workspace.forget(displayedId)
-                                org.madmail.mobile.engine.InvitationCreation.forget(displayedId)
-                                org.madmail.mobile.engine.RemoteCredentials(context, displayedId).delete()
-                                context.getSharedPreferences("ssh-host-keys", android.content.Context.MODE_PRIVATE).edit().remove(displayedId).apply()
-                                context.getSharedPreferences("remote-options-$displayedId", android.content.Context.MODE_PRIVATE).edit().clear().apply()
-                                profiles.remove(displayedId)
-                                remotes = profiles.load()
-                                selectedId = profiles.selected()
+                                removeServer(displayedId)
                             }
 
                         }
@@ -170,9 +183,10 @@ internal fun MadmailApp() {
         ServerPicker(serverId, remotes, identities, phoneConfigured, { selectServer(it); page = 0; openHostingPreferences = false; chooseServer = false }, { chooseServer = false; setup = true }, { id, updated ->
             identityStore.save(id, updated)
             identities = identities + (id to updated)
-        }, onEditing = { editingServer = it })
+        }, onEditing = { editingServer = it }, onOpen = { id, target -> selectServer(id); page = target; openHostingPreferences = false; chooseServer = false },
+            onRemove = { removeServer(it); toaster.show("Server removed."); if (selectedId.isBlank()) chooseServer = false })
     }
-    if (debug) KitSheet(onDismiss = { debug = false }) { DebugMenu(serverId, remote) }
+    if (debug) KitSheet(onDismiss = { debug = false }) { DebugMenu(serverId, remote) { debug = false; replayIntro = true; setup = true } }
 }
 
 /** The tab bar: three labelled tabs under one sliding lozenge, and the current server beside them with its live state. */
@@ -205,7 +219,9 @@ private fun GlassDock(haze: HazeState, page: Int, serverName: String, serverMark
 }
 
 private class DockItem(val label: String, val active: ImageVector, val idle: ImageVector)
-private val DockTabs = listOf(DockItem("Home", Icons.Rounded.Home, Icons.Outlined.Home), DockItem("Invite", Icons.Rounded.QrCode2, Icons.Outlined.QrCode2),
+// Page numbers are the tab order: 0 Home, 1 Statistics, 2 Invite, 3 Settings.
+private val DockTabs = listOf(DockItem("Home", Icons.Rounded.Home, Icons.Outlined.Home), DockItem("Stats", Icons.Rounded.BarChart, Icons.Outlined.BarChart),
+    DockItem("Invite", Icons.Rounded.QrCode2, Icons.Outlined.QrCode2),
     DockItem("Settings", Icons.Rounded.Settings, Icons.Outlined.Settings))
 private val DockHeight = 64.dp
 

@@ -117,7 +117,7 @@ internal fun ServerSettingsScreen(serverId: String, serverName: String, remote: 
         if (notices) Column(Modifier.animateContentSize(tween(300, easing = Emphasized)), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (!ready) Group {
                 InfoRow(Tint.Gray, Icons.Rounded.PowerSettingsNew, if (remote == null) "Hosting is off" else "Not connected",
-                    if (remote == null) "Start hosting in Overview." else "Connect in Overview.")
+                    if (remote == null) "Start hosting on Home." else "Connect on Home.")
             }
             state.error?.let { Group { InfoRow(Tint.Red, Icons.Rounded.ErrorOutline, "Something went wrong", it) } }
             if (state.restartRequired) Group {

@@ -27,6 +27,7 @@ import androidx.compose.material.icons.automirrored.rounded.Article
 import androidx.compose.material.icons.rounded.CleaningServices
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Replay
 import androidx.compose.material.icons.rounded.NetworkCheck
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Share
@@ -67,7 +68,7 @@ import java.util.Locale
  * credentials), so the log here is this app's logcat, which Android limits to the app's own lines.
  */
 @Composable
-internal fun DebugMenu(serverId: String, remote: RemoteServer?) {
+internal fun DebugMenu(serverId: String, remote: RemoteServer?, onReplayIntro: () -> Unit) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
     val toaster = LocalToaster.current
@@ -182,6 +183,8 @@ internal fun DebugMenu(serverId: String, remote: RemoteServer?) {
                 }, icon = Icons.Rounded.Info)
                 RowDivider(48.dp)
                 ActionRow("Restart app UI", { context.findActivity()?.recreate() ?: toaster.show("Couldn’t restart.", error = true) }, icon = Icons.Rounded.Refresh)
+                RowDivider(48.dp)
+                ActionRow("Replay onboarding", onReplayIntro, icon = Icons.Rounded.Replay)
             }
         }
     }

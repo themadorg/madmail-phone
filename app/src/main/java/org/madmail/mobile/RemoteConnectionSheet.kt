@@ -275,7 +275,7 @@ internal fun RemoteConnectionSheet(server: RemoteServer, engine: RemoteEngine, o
                         RemoteLeg.Connect -> SheetHeader("Ready to connect", if (apiMode) "Over the Admin API." else "Installs need root or passwordless sudo.", mark)
                         RemoteLeg.ApiAddress -> SheetHeader("Admin API address", "Like https://mail.example.org/api/admin.", mark)
                         RemoteLeg.ApiKey -> SheetHeader("Admin API token", if (savedApiMatches) "Leave empty to keep the saved one." else "Stored encrypted on this phone.", mark)
-                        RemoteLeg.Done -> SheetHeader("Connected", if (state.managed && state.version == null) "Next, install Madmail." else "Manage it from Overview.", mark)
+                        RemoteLeg.Done -> SheetHeader("Connected", if (state.managed && state.version == null) "Next, install Madmail." else "Manage it from Home.", mark)
                     }
                     Column(Modifier.padding(horizontal = GroupGutter).animateContentSize(tween(300, easing = Emphasized)), verticalArrangement = Arrangement.spacedBy(20.dp)) {
                         when (shown) {

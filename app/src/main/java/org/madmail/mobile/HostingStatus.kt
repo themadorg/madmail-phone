@@ -49,10 +49,13 @@ internal fun EnginePhase.power() = when (this) {
 
 /** The phone's hosting power as the first row of a [Group]: tap anywhere on the row to switch hosting on or off. */
 @Composable
-internal fun HostingStatus(phase: EnginePhase, enabled: Boolean = true, onToggle: (Boolean) -> Unit) {
+internal fun HostingStatus(phase: EnginePhase, enabled: Boolean = true, unreachable: Boolean = false, onToggle: (Boolean) -> Unit) {
     PowerRow(phase.power(),
         when (phase) { EnginePhase.Running -> "Hosting is live"; EnginePhase.Starting -> "Starting…"; EnginePhase.Stopping -> "Stopping…"; EnginePhase.Failed -> "Hosting failed"; else -> "Hosting is off" },
-        when { phase == EnginePhase.Running -> "Ready for connections."; phase == EnginePhase.Failed -> "See the error below."; !enabled -> "Choose a version below."; else -> null },
+        when {
+            phase == EnginePhase.Running && unreachable -> "Guests can’t reach it on mobile data."
+            phase == EnginePhase.Running -> "Ready for connections."; phase == EnginePhase.Failed -> "See the error below."; !enabled -> "Choose a version below."; else -> null
+        },
         PowerConfirm(
             PowerQuestion("Turn on hosting?", "This phone starts serving mail. Keep it charged and online.", "Turn on"),
             PowerQuestion("Turn off hosting?", "People on this phone can’t send or receive mail until you turn it back on.", "Turn off")),

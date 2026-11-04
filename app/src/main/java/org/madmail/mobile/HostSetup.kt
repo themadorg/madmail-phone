@@ -92,6 +92,9 @@ import androidx.compose.material.icons.rounded.BatteryFull
 import androidx.compose.material.icons.rounded.Cancel
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Wifi
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.animation.Crossfade
+import androidx.compose.material.icons.rounded.WifiOff
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -177,13 +180,14 @@ private fun SetupStep.wizard(): Pair<Int, Int>? = when (this) {
     else -> null
 }
 
-private class IntroPage(val title: String, val body: String)
+private class IntroPage(val title: String, val body: String, val terminal: String)
 
+// The terminal lines are what the app really does at each step: the ports it opens, the link a QR holds, the SSH it runs.
 private val introPages = listOf(
-    IntroPage("A mail server,\non your terms.", "Host Madmail for the people you invite."),
-    IntroPage("Runs on this phone.", "Over Wi-Fi, hotspot or VPN. No root needed."),
-    IntroPage("Invite with a scan.", "Each guest scans their own QR in Delta Chat."),
-    IntroPage("Or on your own server.", "Connect a VPS and manage it from here."),
+    IntroPage("A mail server,\non your terms.", "Host Madmail for the people you invite.", "$ madmail --config madmail.conf run"),
+    IntroPage("Runs on this phone.", "Over Wi-Fi, hotspot or VPN. No root needed.", "listening :11465 :11993 :18443"),
+    IntroPage("Invite with a scan.", "Each guest scans their own QR in Delta Chat.", "dclogin://… · one QR per guest"),
+    IntroPage("Or on your own server.", "Connect a VPS and manage it from here.", "ssh root@vps · systemctl status madmail"),
 )
 
 // One curve for every morph: quick start, long settle, no overshoot.
@@ -502,12 +506,19 @@ private fun Morph.Intro(pager: PagerState, choosing: Boolean, onOpen: () -> Unit
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 HorizontalPager(pager, Modifier.fillMaxSize(), userScrollEnabled = !choosing) { index ->
                     val page = introPages[index]
+                    // Each page decodes again when it settles, so swiping back replays it like a fresh screen.
+                    val settled = pager.settledPage == index
+                    var plays by remember { mutableIntStateOf(0) }
+                    LaunchedEffect(settled) { if (settled) plays++ }
                     Column(Modifier.fillMaxSize().padding(horizontal = 32.dp).padding(top = StageHeight + 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(page.title, Modifier.semantics { heading() }, textAlign = TextAlign.Center, style = MaterialTheme.typography.displaySmall,
-                            fontWeight = FontWeight.SemiBold, letterSpacing = (-0.5).sp, lineHeight = 42.sp)
+                        DecodeText(page.title, plays, Modifier.semantics { heading() }, MaterialTheme.typography.displaySmall, red.copy(alpha = 0.85f),
+                            TextAlign.Center, FontWeight.SemiBold, (-0.5).sp, 42.sp)
                         Spacer(Modifier.height(14.dp))
                         Text(page.body, Modifier.widthIn(max = 360.dp), textAlign = TextAlign.Center,
                             style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.height(18.dp))
+                        TerminalLine(page.terminal, plays, Modifier.clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
+                            .padding(horizontal = 10.dp, vertical = 5.dp), MaterialTheme.typography.labelMedium, successText())
                     }
                 }
                 // Drawn over the pager without touch handling: swipes anywhere move the pages and the stage follows the finger.
@@ -854,7 +865,30 @@ private fun Morph.PhoneStep(name: String, field: FocusRequester, onName: (String
         Spacer(Modifier.height(24.dp))
         Caption("Before you start")
         Group {
-            InfoRow(Tint.Blue, Icons.Rounded.Wifi, "Share a network", "Same Wi-Fi, hotspot or VPN as guests.")
+            val networks by rememberGuestNetworks()
+            val shared = networks?.firstOrNull()
+            val context = LocalContext.current
+            // Read live, so joining Wi-Fi from the panel turns the row green without leaving the step.
+            InfoRow(if (networks?.isEmpty() == true) Tint.Orange else Tint.Blue, if (networks?.isEmpty() == true) Icons.Rounded.WifiOff else Icons.Rounded.Wifi, "Share a network",
+                when {
+                    shared != null -> "On ${shared.network.label}. Guests join the same one."
+                    networks == null -> "Same Wi-Fi, hotspot or VPN as guests."
+                    else -> "Mobile data won’t work. Join Wi-Fi, a hotspot or a VPN."
+                }) {
+                Crossfade(networks?.isNotEmpty(), label = "Network status") { connected ->
+                    when (connected) {
+                        true -> Row(Modifier.semantics(mergeDescendants = true) {}, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Icon(Icons.Rounded.CheckCircle, null, Modifier.size(16.dp), tint = Success)
+                            Text("Connected", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        false -> Box(Modifier.minimumInteractiveComponentSize().clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer)
+                            .clickable(role = Role.Button, onClick = { context.openWifiSettings() }).padding(horizontal = 14.dp, vertical = 7.dp)) {
+                            Text("Wi-Fi", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimaryContainer, fontWeight = FontWeight.SemiBold)
+                        }
+                        null -> Unit
+                    }
+                }
+            }
             RowDivider(64.dp)
             InfoRow(Tint.Green, Icons.Rounded.BatteryFull, "Keep it running",
                 if (access.allowed) "Stays reachable with the screen off." else "Lets guests reach it with the screen off. Uses more battery.") {
@@ -868,7 +902,7 @@ private fun Morph.PhoneStep(name: String, field: FocusRequester, onName: (String
             }
         }
         access.error?.let { Footer(it, MaterialTheme.colorScheme.error) }
-        Footer("Start hosting from Overview.")
+        Footer("Start hosting from Home.")
     }
 }
 

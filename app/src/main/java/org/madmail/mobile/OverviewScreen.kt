@@ -3,6 +3,12 @@ package org.madmail.mobile
 import android.content.Context
 import android.os.StatFs
 import android.text.format.Formatter
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -14,12 +20,19 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import org.madmail.mobile.core.PortMode
 import org.madmail.mobile.core.RemoteServer
 import org.madmail.mobile.core.ServerIdentity
@@ -29,12 +42,12 @@ import org.madmail.mobile.engine.RemoteEngine
 import org.json.JSONObject
 import java.text.NumberFormat
 
+/** The live numbers for one server, on their own tab. Home keeps the controls; this page only reads. */
 @Composable
-internal fun OverviewScreen(name: String, identity: ServerIdentity, remote: RemoteServer?, onSettings: () -> Unit, connection: @Composable () -> Unit = {}) {
+internal fun StatisticsScreen(remote: RemoteServer?, onHome: () -> Unit) {
     val context = LocalContext.current
     val phone = remote == null
-    val engine = remember { LocalEngine.get(context) }
-    val engineState by engine.state.collectAsState()
+    val engineState by remember { LocalEngine.get(context) }.state.collectAsState()
     val remoteState = remote?.let { RemoteEngine.get(context, it).state.collectAsState().value }
     val running = if (phone) engineState.phase == EnginePhase.Running else remoteState?.status?.startsWith("Running") == true
     val overview = if (phone && running) engineState.overview else remoteState?.overview
@@ -48,26 +61,17 @@ internal fun OverviewScreen(name: String, identity: ServerIdentity, remote: Remo
             else -> result.toString()
         }
     }
-    val preferences = context.getSharedPreferences("server-settings-phone", Context.MODE_PRIVATE)
-    val legacy = context.getSharedPreferences("server-settings", Context.MODE_PRIVATE)
-    val standardPorts = preferences.getBoolean("root_ports", legacy.getBoolean("root_ports", false))
-    val ports = if (standardPorts) PortMode.RootStandard else PortMode.Unprivileged
-    val version = if (phone) engineState.version ?: engine.selected?.version else remoteState?.version
-
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(24.dp)) {
-        // One title per page. The line under it only says what the name doesn't: where it runs and how it's reached.
-        val via = if (remoteState?.transport == "API") "Admin API" else "SSH"
-        val subtitle = when {
-            phone -> "Hosted on this phone".takeIf { name != "This phone" }
-            name.equals(remote!!.host, ignoreCase = true) -> via
-            else -> "$via · ${remote!!.host}"
+        // With nothing to read, say why once instead of leaving a page of dashes unexplained.
+        if (overview == null) Group {
+            InfoRow(Tint.Gray, Icons.Rounded.QueryStats, if (running) "Waiting for numbers" else "No live numbers",
+                when {
+                    running -> "They appear in a moment."
+                    phone -> "Turn on hosting on Home to see live numbers."
+                    else -> "Connect to the server on Home to see live numbers."
+                })
+            if (!running) { RowDivider(64.dp); ActionRow("Go to Home", onHome, icon = Icons.Rounded.Home) }
         }
-        PageTitle(name, subtitle) { ServerMark(identity.mark, phone, Modifier.padding(start = 12.dp), size = 32.dp) }
-
-        if (phone) EngineControls() else RemoteControls(remote!!)
-
-        connection()
-
         Section("Activity", if (overview == null) "Unavailable" else "Live") {
             Stat(Tint.Orange, Icons.Rounded.People, "Accounts", metric("users", "registered"))
             Stat(Tint.Pink, Icons.Rounded.Schedule, "Uptime", metric("uptime", "duration"))
@@ -117,6 +121,55 @@ internal fun OverviewScreen(name: String, identity: ServerIdentity, remote: Remo
             Stat(Tint.Green, Icons.Rounded.Notifications, "Push sent", metric("push", "successful_notifications"))
             Stat(Tint.Yellow, Icons.Rounded.History, "Retention", metric("message_retention", "retention"), last = true)
         }
+    }
+}
+
+@Composable
+internal fun OverviewScreen(name: String, identity: ServerIdentity, remote: RemoteServer?, onSettings: () -> Unit, connection: @Composable () -> Unit = {}) {
+    val context = LocalContext.current
+    val phone = remote == null
+    val engine = remember { LocalEngine.get(context) }
+    val engineState by engine.state.collectAsState()
+    val remoteState = remote?.let { RemoteEngine.get(context, it).state.collectAsState().value }
+    val running = if (phone) engineState.phase == EnginePhase.Running else remoteState?.status?.startsWith("Running") == true
+    val overview = if (phone && running) engineState.overview else remoteState?.overview
+    val numbers = remember { NumberFormat.getNumberInstance().apply { maximumFractionDigits = 1 } }
+    fun metric(vararg path: String): String {
+        var value: Any? = overview
+        path.forEach { value = (value as? JSONObject)?.opt(it) }
+        return when (val result = value) {
+            null, JSONObject.NULL -> "—"
+            is Number -> numbers.format(result)
+            else -> result.toString()
+        }
+    }
+    val preferences = context.getSharedPreferences("server-settings-phone", Context.MODE_PRIVATE)
+    val legacy = context.getSharedPreferences("server-settings", Context.MODE_PRIVATE)
+    val standardPorts = preferences.getBoolean("root_ports", legacy.getBoolean("root_ports", false))
+    val ports = if (standardPorts) PortMode.RootStandard else PortMode.Unprivileged
+    val version = if (phone) engineState.version ?: engine.selected?.version else remoteState?.version
+
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+        // One title per page. The line under it only says what the name doesn't: where it runs and how it's reached.
+        val networks by rememberGuestNetworks()
+        val shared = networks?.firstOrNull()
+        val power = if (phone) engineState.phase.power() else when {
+            running -> PowerPhase.On; remoteState?.error != null -> PowerPhase.Failed; else -> PowerPhase.Off
+        }
+        val via = if (remoteState?.transport == "API") "Admin API" else "SSH"
+        val place = when {
+            !phone -> if (name.equals(remote!!.host, ignoreCase = true)) via else "$via · ${remote!!.host}"
+            shared != null -> "${shared.network.label} · ${shared.host}"
+            networks == null -> "On this phone"
+            else -> "Mobile data only"
+        }
+        val where = if (phone && name != "This phone") "This phone · $place" else place
+        ServerHeader(name, identity.mark, phone, power, unreachable = phone && networks?.isEmpty() == true, where)
+
+        if (phone) EngineControls() else RemoteControls(remote!!)
+
+        connection()
+
         Section("Connection") {
             Stat(Tint.Gray, Icons.Rounded.Inventory2, "Version", version ?: metric("version"), copyable = true)
             if (phone) {
@@ -164,4 +217,51 @@ private fun Section(title: String, state: String? = null, content: @Composable C
 private fun Stat(tint: Tint, icon: ImageVector, label: String, value: String, copyable: Boolean = false, last: Boolean = false) {
     ValueRow(label, value, copyable = copyable && value != "—", mark = { TintIcon(tint, icon, size = StatMark) })
     if (!last) RowDivider(StatInset)
+}
+
+/**
+ * The top of Home, laid out like a contact card: the server's mark large, its name, and one line saying where it runs.
+ * The dot before that line is the power state at a glance; the switch below it is where it changes.
+ */
+@Composable
+private fun ServerHeader(name: String, mark: String, phone: Boolean, power: PowerPhase, unreachable: Boolean, where: String) {
+    val colors = MaterialTheme.colorScheme
+    val dot = when {
+        power == PowerPhase.On && unreachable -> Color(Tint.Orange.bottom)
+        power == PowerPhase.On -> Success
+        power == PowerPhase.Failed -> colors.error
+        power.busy -> Success.copy(alpha = 0.45f)
+        else -> colors.outline
+    }
+    val state = when (power) {
+        PowerPhase.On -> if (unreachable) "Live, not reachable" else "Live"
+        PowerPhase.Starting -> "Starting"; PowerPhase.Stopping -> "Stopping"; PowerPhase.Failed -> "Failed"; PowerPhase.Off -> "Off"
+    }
+    Column(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        ServerMark(mark, phone, size = 84.dp)
+        Spacer(Modifier.height(14.dp))
+        Text(name, Modifier.padding(horizontal = 24.dp).semantics { heading() }, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold,
+            letterSpacing = (-0.4).sp, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Spacer(Modifier.height(6.dp))
+        Row(Modifier.padding(horizontal = 24.dp).semantics(mergeDescendants = true) { stateDescription = state }, verticalAlignment = Alignment.CenterVertically) {
+            StatusDot(dot, pulse = power == PowerPhase.On && !unreachable)
+            Spacer(Modifier.width(8.dp))
+            Text(where, style = MaterialTheme.typography.bodyLarge, color = colors.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+/** A small status dot. While [pulse] is on, a soft ring breathes out of it, the way a live call indicator does. */
+@Composable
+private fun StatusDot(color: Color, pulse: Boolean) {
+    val animated by animateColorAsState(color, tween(320), label = "Status dot")
+    // The ring's clock only exists while it pulses, so an idle dot costs no frames.
+    if (pulse && !motionOff()) {
+        val ring = rememberInfiniteTransition(label = "Status ring")
+        val phase by ring.animateFloat(0f, 1f, infiniteRepeatable(tween(1_800, easing = LinearOutSlowInEasing)), label = "Ring phase")
+        Box(Modifier.size(10.dp).drawBehind {
+            drawCircle(animated.copy(alpha = 0.45f * (1f - phase)), radius = size.minDimension / 2 * (1f + 1.4f * phase))
+            drawCircle(animated)
+        })
+    } else Box(Modifier.size(10.dp).drawBehind { drawCircle(animated) })
 }

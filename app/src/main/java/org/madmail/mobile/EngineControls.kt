@@ -8,7 +8,12 @@ import android.net.Uri
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -51,12 +56,14 @@ internal fun EngineControls() {
     val engine = remember { LocalEngine.get(context) }
     val state by engine.state.collectAsState()
     val access = rememberBackgroundAccess()
+    val networks by rememberGuestNetworks()
+    val offline = networks?.isEmpty() == true
     var versions by remember { mutableStateOf(false) }
     val start = { context.startForegroundService(Intent(context, HostingService::class.java)); Unit }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { start() }
     Column {
         Group(Modifier.animateContentSize(tween(300, easing = Emphasized))) {
-            HostingStatus(state.phase, enabled = engine.selected != null) { on ->
+            HostingStatus(state.phase, enabled = engine.selected != null, unreachable = offline) { on ->
                 if (!on) context.startService(Intent(context, HostingService::class.java).setAction("stop"))
                 else if (Build.VERSION.SDK_INT >= 33) permission.launch(Manifest.permission.POST_NOTIFICATIONS) else start()
             }
@@ -65,7 +72,12 @@ internal fun EngineControls() {
             RowDivider(64.dp)
             BackgroundHostingAccess(access)
         }
-        state.error?.let { Footer(it, MaterialTheme.colorScheme.error) }
+        AnimatedVisibility(offline, enter = fadeIn(tween(220)) + expandVertically(tween(300, easing = Emphasized)),
+            exit = fadeOut(tween(120)) + shrinkVertically(tween(260, easing = Emphasized))) {
+            NoNetworkNotice(Modifier.padding(top = 16.dp))
+        }
+        // The notice above already says why a start failed for lack of a network.
+        state.error?.takeUnless { offline && it == NO_NETWORK }?.let { Footer(it, MaterialTheme.colorScheme.error) }
         access.error?.let { Footer(it, MaterialTheme.colorScheme.error) }
     }
     if (versions) EngineVersionsSheet { versions = false }

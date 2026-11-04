@@ -5,11 +5,16 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -89,6 +94,10 @@ internal fun RegistrationScreen(serverId: String, serverName: String, remote: Re
     val prefs = remember(serverId) { context.getSharedPreferences("invite-$serverId", Context.MODE_PRIVATE) }
     var origin by remember(serverId) { mutableStateOf(prefs.getString("origin", null) ?: if (phone) localInviteOrigin(context) else ssh?.guestOrigin ?: GuestAddresses.origin(remote!!.host).orEmpty()) }
     var code by remember(serverId) { mutableStateOf(initialEndpoint) }
+    val networks by rememberGuestNetworks()
+    val offline = phone && networks?.isEmpty() == true
+    // A phone that had no network when the page opened picks up an address as soon as one appears.
+    LaunchedEffect(networks) { if (phone && origin.isBlank() && !networks.isNullOrEmpty()) origin = localInviteOrigin(context) }
     var invitations by remember(serverId) { mutableStateOf<List<Invitation>>(emptyList()) }
     var loaded by remember(serverId) { mutableStateOf(false) }
     var refresh by remember { mutableIntStateOf(0) }
@@ -211,19 +220,22 @@ internal fun RegistrationScreen(serverId: String, serverName: String, remote: Re
             }
         } else {
             // The page title already names the page; only a line that tells the user something stays above the content.
-            val body = if (!ready) if (phone) "Start hosting from Overview." else "Connect from Overview." else if (shown.isNotBlank()) "This invitation is unavailable. Choose or create another." else null
-            body?.let { Text(it, Modifier.padding(horizontal = 4.dp), style = MaterialTheme.typography.bodyLarge, color = colors.onSurfaceVariant) }
+            val body = if (!ready) if (phone) "Start hosting from Home." else "Connect from Home." else if (shown.isNotBlank()) "This invitation is unavailable. Choose or create another." else null
+            // Without a shared network the notice below says why nothing can be created, so the line above stays out of its way.
+            if (!offline) body?.let { Text(it, Modifier.padding(horizontal = 4.dp), style = MaterialTheme.typography.bodyLarge, color = colors.onSurfaceVariant) }
         }
+        AnimatedVisibility(offline, enter = fadeIn(tween(220)) + expandVertically(tween(300, easing = Emphasized)),
+            exit = fadeOut(tween(120)) + shrinkVertically(tween(260, easing = Emphasized))) { NoNetworkNotice() }
         Column {
             Caption("Guest address")
             Group {
                 Box(Modifier.fillMaxWidth().clickable(enabled = !busy, role = Role.Button, onClickLabel = "Edit guest address", onClick = rememberTap { editAddress = true })) {
-                    InfoRow(Tint.Teal, Icons.Rounded.Link, "Address", origin.ifBlank { "Choose an address" }) {
+                    InfoRow(Tint.Teal, Icons.Rounded.Link, "Address", origin.ifBlank { if (offline) "Waiting for a network" else "Choose an address" }) {
                         Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) { Icon(Icons.Rounded.Edit, null, Modifier.size(20.dp), tint = colors.onSurfaceVariant) }
                     }
                 }
             }
-            if (phone) Footer("Update it when the network changes.")
+            if (phone && !offline) Footer("Update it when the network changes.")
         }
         Column {
             if (!personal) {
@@ -259,7 +271,7 @@ internal fun RegistrationScreen(serverId: String, serverName: String, remote: Re
             runCatching { local.useMailHost(host) }
                 .onSuccess { switched -> if (!switched) error = "Couldn’t switch to $host. Check this phone’s network."
                     else if (before != host && local.mailHost == host) toaster.show("Hosting restarted on $host.") }
-                .onFailure { error = it.message ?: "Couldn’t restart hosting. Start it from Overview." }
+                .onFailure { error = it.message ?: "Couldn’t restart hosting. Start it from Home." }
         }
     }
     if (create) {
@@ -432,7 +444,7 @@ private fun invitationBitmap(payload: String): Bitmap? = runCatching {
     }
 }.getOrNull()
 
-private fun localInviteOrigin(context: Context): String = PhoneMailDomain.preferred(GuestNetworks.phone(context))?.origin.orEmpty()
+internal fun localInviteOrigin(context: Context): String = PhoneMailDomain.preferred(GuestNetworks.phone(context))?.origin.orEmpty()
 
 /** A bar that empties over one rotation period, restarting with each new code. */
 @Composable

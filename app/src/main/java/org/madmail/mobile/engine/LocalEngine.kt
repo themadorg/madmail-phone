@@ -19,6 +19,9 @@ import java.util.concurrent.TimeUnit
 
 internal data class EngineVersion(val version: String, val file: String, val sha256: String)
 internal enum class EnginePhase { Stopped, Starting, Running, Stopping, Failed }
+/** The start error when the phone has no Wi-Fi, hotspot or VPN address; screens that already explain this hide it. */
+internal const val NO_NETWORK = "Connect to Wi-Fi, a hotspot or a VPN."
+
 internal data class EngineState(val phase: EnginePhase = EnginePhase.Stopped, val version: String? = null, val error: String? = null, val overview: JSONObject? = null)
 
 /** One owner per app process. The foreground service owns start/stop; UI observes only. */
@@ -131,7 +134,7 @@ internal class LocalEngine private constructor(private val context: Context) {
         val saved = context.getSharedPreferences("invite-phone", Context.MODE_PRIVATE).getString("origin", null)
         val ip = PhoneMailDomain.resolve(saved, GuestNetworks.phone(context), previousPrimary)
             ?: if (old != null && PhoneMailDomain.previous(old).first != null) return null
-            else error("Connect to Wi-Fi, a hotspot or a VPN.")
+            else error(NO_NETWORK)
         val rendered = PhoneMailDomain.render(ip, previousPrimary, previousLocals)
         if (rendered == old) return ip
         if (old != null) {
@@ -183,7 +186,7 @@ internal class LocalEngine private constructor(private val context: Context) {
         mutable.value = mutable.value.copy(phase = EnginePhase.Stopping)
         monitor?.cancel(); monitor = null
         if (!terminate()) {
-            mutable.value = mutable.value.copy(phase = EnginePhase.Failed, error = "Server didn’t stop cleanly. Start it from Overview.")
+            mutable.value = mutable.value.copy(phase = EnginePhase.Failed, error = "Server didn’t stop cleanly. Start it from Home.")
             error("Restart failed after an unclean stop.")
         }
         startLocked()

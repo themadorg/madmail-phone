@@ -1,4 +1,4 @@
-name: Android release candidate
+name: Android release
 on:
   push:
     tags: ['v*']
@@ -59,3 +59,43 @@ jobs:
           name: release-checks-${{ github.sha }}
           path: app/build/reports/
           retention-days: 14
+
+  # Publishing runs apart from signing: this job can write releases but never sees the signing secrets,
+  # and the signing job can read secrets but never write to the repository.
+  publish:
+    needs: release
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Check tag and version
+        run: bash scripts/check-release-version.sh
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: madmail-release-${{ github.sha }}
+          path: dist
+      - name: Verify the artifact before publishing
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum -c SHA256SUMS
+          sha256sum -c ./*-full.zip.sha256
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          version=$(sed -n 's/^versionName=//p' release.properties)
+          notes="docs/releases/$version.md"
+          [ -s "$notes" ] || { echo "Write $notes before tagging" >&2; exit 1; }
+          # Anything before 1.0, and any version with a suffix, ships as a prerelease.
+          flags=()
+          if [[ "$version" == *-* || "$version" == 0.* ]]; then flags+=(--prerelease); fi
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag "${flags[@]}" \
+            --title "Madmail Mobile $version" --notes-file "$notes" dist/*

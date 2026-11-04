@@ -90,7 +90,7 @@ internal class SettingsController private constructor(private val context: Conte
             val values = request("/admin/settings")
             prefs.edit().putBoolean("restart", false).apply()
             mutable.value = mutable.value.copy(values = values, stale = false, restartRequired = false, message = "Server restarted.")
-        } catch (_: Exception) { mutable.value = mutable.value.copy(stale = true, error = "Restart not confirmed. Check Overview before retrying.") }
+        } catch (_: Exception) { mutable.value = mutable.value.copy(stale = true, error = "Restart not confirmed. Check Home before retrying.") }
         finally { mutable.value = mutable.value.copy(busy = false) }
     } } }
     companion object {
