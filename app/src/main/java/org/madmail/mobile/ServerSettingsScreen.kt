@@ -3,7 +3,6 @@ package org.madmail.mobile
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import android.text.format.Formatter
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -189,7 +188,7 @@ internal fun ServerSettingsScreen(serverId: String, serverName: String, remote: 
                         if (ready && rows != null) {
                             Section("Defaults") {
                                 NavRow({ TintIcon(Tint.Yellow, Icons.Rounded.DataUsage) }, "Default storage quota",
-                                    value = quota?.optLong("default_quota_bytes")?.let { Formatter.formatFileSize(context, it) } ?: "Not loaded", enabled = enabled) {
+                                    value = quota?.optLong("default_quota_bytes")?.let { ByteSize.format(it) } ?: "Not loaded", enabled = enabled) {
                                     quotaTarget = ""; quotaInitial = quota?.optLong("default_quota_bytes") ?: 0L
                                 }
                             }
@@ -201,7 +200,7 @@ internal fun ServerSettingsScreen(serverId: String, serverName: String, remote: 
                                     val row = rows.getJSONObject(i)
                                     if (i > 0) RowDivider(64.dp)
                                     NavRow({ TintIcon(Tint.Orange, Icons.Rounded.Person) }, row.getString("username"),
-                                        "${Formatter.formatFileSize(context, row.optLong("used_bytes"))} used · ${Formatter.formatFileSize(context, row.optLong("max_bytes"))} quota") {
+                                        "${ByteSize.format(row.optLong("used_bytes"))} used · ${ByteSize.format(row.optLong("max_bytes"))} quota") {
                                         account = row; navigate("account")
                                     }
                                 }
@@ -214,9 +213,9 @@ internal fun ServerSettingsScreen(serverId: String, serverName: String, remote: 
                         Section("Account") {
                             ValueRow("Address", username, copyable = true, mark = { TintIcon(Tint.Blue, Icons.Rounded.AlternateEmail) })
                             RowDivider(64.dp)
-                            ValueRow("Storage used", Formatter.formatFileSize(context, updated.optLong("used_bytes")), mark = { TintIcon(Tint.Yellow, Icons.Rounded.Storage) })
+                            ValueRow("Storage used", ByteSize.format(updated.optLong("used_bytes")), mark = { TintIcon(Tint.Yellow, Icons.Rounded.Storage) })
                             RowDivider(64.dp)
-                            NavRow({ TintIcon(Tint.Yellow, Icons.Rounded.DataUsage) }, "Storage quota", value = Formatter.formatFileSize(context, updated.optLong("max_bytes")), enabled = enabled) {
+                            NavRow({ TintIcon(Tint.Yellow, Icons.Rounded.DataUsage) }, "Storage quota", value = ByteSize.format(updated.optLong("max_bytes")), enabled = enabled) {
                                 quotaTarget = username; quotaInitial = updated.optLong("max_bytes")
                             }
                         }
@@ -297,7 +296,7 @@ internal fun ServerSettingsScreen(serverId: String, serverName: String, remote: 
         KitDialog(if (username.isEmpty()) "Default storage quota" else "Account quota", null, "Save", confirmEnabled = amount != null, onConfirm = ::save, onDismiss = { quotaTarget = null }) {
             Group {
                 FieldRow("Storage", draft, { draft = it.filter(Char::isDigit) }, "512", focus, fieldKeyboard(KeyboardType.Number, ImeAction.Done), { if (amount != null) save() },
-                    trailing = { Text("MiB", Modifier.padding(end = 12.dp), style = MaterialTheme.typography.bodyLarge, color = colors.onSurfaceVariant) })
+                    trailing = { Text("MB", Modifier.padding(end = 12.dp), style = MaterialTheme.typography.bodyLarge, color = colors.onSurfaceVariant) })
             }
         }
     }

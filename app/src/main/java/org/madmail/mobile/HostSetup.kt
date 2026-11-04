@@ -120,6 +120,7 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.platform.LocalDensity
+import org.madmail.mobile.core.GuestNetwork
 import org.madmail.mobile.core.RemoteServer
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import com.google.zxing.qrcode.encoder.Encoder
@@ -871,9 +872,10 @@ private fun Morph.PhoneStep(name: String, field: FocusRequester, onName: (String
             // Read live, so joining Wi-Fi from the panel turns the row green without leaving the step.
             InfoRow(if (networks?.isEmpty() == true) Tint.Orange else Tint.Blue, if (networks?.isEmpty() == true) Icons.Rounded.WifiOff else Icons.Rounded.Wifi, "Share a network",
                 when {
+                    shared?.network == GuestNetwork.Mobile -> "On mobile data. Works where your carrier lets guests reach this phone."
                     shared != null -> "On ${shared.network.label}. Guests join the same one."
-                    networks == null -> "Same Wi-Fi, hotspot or VPN as guests."
-                    else -> "Mobile data won’t work. Join Wi-Fi, a hotspot or a VPN."
+                    networks == null -> "Same Wi-Fi, hotspot or VPN as guests, or mobile data."
+                    else -> "No network. Join Wi-Fi, a hotspot or a VPN, or turn on mobile data."
                 }) {
                 Crossfade(networks?.isNotEmpty(), label = "Network status") { connected ->
                     when (connected) {

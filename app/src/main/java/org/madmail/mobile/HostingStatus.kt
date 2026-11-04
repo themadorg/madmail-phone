@@ -53,7 +53,7 @@ internal fun HostingStatus(phase: EnginePhase, enabled: Boolean = true, unreacha
     PowerRow(phase.power(),
         when (phase) { EnginePhase.Running -> "Hosting is live"; EnginePhase.Starting -> "Starting…"; EnginePhase.Stopping -> "Stopping…"; EnginePhase.Failed -> "Hosting failed"; else -> "Hosting is off" },
         when {
-            phase == EnginePhase.Running && unreachable -> "Guests can’t reach it on mobile data."
+            phase == EnginePhase.Running && unreachable -> "No network, so guests can’t reach it."
             phase == EnginePhase.Running -> "Ready for connections."; phase == EnginePhase.Failed -> "See the error below."; !enabled -> "Choose a version below."; else -> null
         },
         PowerConfirm(

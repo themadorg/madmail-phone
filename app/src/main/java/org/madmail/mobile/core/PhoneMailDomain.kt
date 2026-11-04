@@ -21,7 +21,7 @@ internal object PhoneMailDomain {
         return primary to locals
     }
 
-    /** Saved guest IP while it is still on this phone, then non-VPN, then VPN, then the last IP used. Never loopback, never a name. */
+    /** Saved guest IP while it is still on this phone, then [preferred], then the last IP used. Never loopback, never a name. */
     fun resolve(savedOrigin: String?, detected: List<GuestAddress>, previousPrimary: String?): String? {
         val saved = savedOrigin?.let { runCatching { java.net.URI(it).host }.getOrNull() }
         return saved?.takeIf { host -> GuestAddresses.ipv4(host) && detected.any { it.host == host } }
@@ -29,8 +29,12 @@ internal object PhoneMailDomain {
             ?: previousPrimary?.removeSurrounding("[", "]")?.takeIf(GuestAddresses::ipv4)
     }
 
-    /** Nearby networks first; a VPN address only when nothing else exists. */
-    fun preferred(detected: List<GuestAddress>): GuestAddress? = detected.firstOrNull { it.network != GuestNetwork.Vpn } ?: detected.firstOrNull()
+    /**
+     * Nearby networks first, then a VPN, then mobile data. A VPN was set up on purpose; whether a carrier lets
+     * guests reach a mobile address depends on the country, so it is the last resort.
+     */
+    fun preferred(detected: List<GuestAddress>): GuestAddress? = detected.firstOrNull { it.network != GuestNetwork.Vpn && it.network != GuestNetwork.Mobile }
+        ?: detected.firstOrNull { it.network == GuestNetwork.Vpn } ?: detected.firstOrNull()
 
     fun render(ip: String, previousPrimary: String?, previousLocals: List<String>): String {
         require(GuestAddresses.ipv4(ip))

@@ -27,7 +27,7 @@ import org.madmail.mobile.core.GuestAddress
 import org.madmail.mobile.engine.GuestNetworks
 
 /**
- * The phone's guest-reachable addresses, kept current as Wi-Fi, hotspots and VPNs come and go. Null until the first read.
+ * The phone's guest-reachable addresses, kept current as Wi-Fi, mobile data, hotspots and VPNs come and go. Null until the first read.
  * A hotspot isn't always reported to ConnectivityManager, so the list is also re-read every few seconds.
  */
 @Composable
@@ -56,14 +56,14 @@ internal fun rememberGuestNetworks(): State<List<GuestAddress>?> {
 }
 
 /**
- * Shown on the phone when no Wi-Fi, hotspot or VPN is up. Mobile data gives the phone an address guests can't reach,
- * so this says what to do instead and opens the right settings.
+ * Shown on the phone when it has no usable address at all: no Wi-Fi, mobile data, hotspot or VPN.
+ * Says what to do and opens the right settings.
  */
 @Composable
 internal fun NoNetworkNotice(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     Group(modifier) {
-        InfoRow(Tint.Orange, Icons.Rounded.WifiOff, "No shared network", "Guests can’t reach a phone on mobile data. Join Wi-Fi, turn on a hotspot or connect a VPN.")
+        InfoRow(Tint.Orange, Icons.Rounded.WifiOff, "No network", "Guests can’t reach this phone. Join Wi-Fi, turn on mobile data or a hotspot, or connect a VPN.")
         RowDivider(64.dp)
         ActionRow("Wi-Fi settings", { context.openWifiSettings() }, icon = Icons.Rounded.Wifi)
         RowDivider(48.dp)

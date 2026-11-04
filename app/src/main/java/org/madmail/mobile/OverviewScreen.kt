@@ -161,7 +161,7 @@ internal fun OverviewScreen(name: String, identity: ServerIdentity, remote: Remo
             !phone -> if (name.equals(remote!!.host, ignoreCase = true)) via else "$via · ${remote!!.host}"
             shared != null -> "${shared.network.label} · ${shared.host}"
             networks == null -> "On this phone"
-            else -> "Mobile data only"
+            else -> "No network"
         }
         val where = if (phone && name != "This phone") "This phone · $place" else place
         ServerHeader(name, identity.mark, phone, power, unreachable = phone && networks?.isEmpty() == true, where)

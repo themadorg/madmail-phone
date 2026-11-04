@@ -20,13 +20,14 @@ internal object GuestNetworks {
             val caps = manager.getNetworkCapabilities(network) ?: return@forEach
             val links = manager.getLinkProperties(network) ?: return@forEach
             val device = links.interfaceName ?: return@forEach
-            val kind = GuestAddresses.classify(device, caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN), caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) ?: return@forEach
+            val kind = GuestAddresses.classify(device, caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN), caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI),
+                cellular = caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) ?: return@forEach
             links.linkAddresses.forEach { link ->
                 val host = link.address.hostAddress ?: return@forEach
                 if (link.address is Inet4Address && GuestAddresses.ipv4(host)) result += GuestAddress(host, kind, device)
             }
         } }
-        // Hotspot interfaces may not be registered with ConnectivityManager.
+        // Hotspot and 464XLAT interfaces may not be registered with ConnectivityManager.
         runCatching { NetworkInterface.getNetworkInterfaces().toList().filter { it.isUp }.forEach { device ->
             val kind = GuestAddresses.classify(device.name) ?: return@forEach
             device.inetAddresses.toList().filterIsInstance<Inet4Address>().forEach { address ->

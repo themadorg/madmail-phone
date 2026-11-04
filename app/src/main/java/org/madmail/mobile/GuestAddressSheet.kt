@@ -75,6 +75,7 @@ internal fun GuestAddressSheet(origin: String, remote: RemoteServer?, onDismiss:
                         GuestNetwork.Wifi -> Tint.Teal to Icons.Rounded.Wifi
                         GuestNetwork.Hotspot -> Tint.Teal to Icons.Rounded.WifiTethering
                         GuestNetwork.Vpn -> Tint.Teal to Icons.Rounded.VpnKey
+                        GuestNetwork.Mobile -> Tint.Teal to Icons.Rounded.SignalCellularAlt
                         else -> Tint.Teal to Icons.Rounded.SettingsEthernet
                     }
                     AddressRow(tint, icon, address.network.label, "${address.host} · ${address.device}", draft == address.origin) { choose(address.origin) }

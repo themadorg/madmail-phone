@@ -19,8 +19,8 @@ import java.util.concurrent.TimeUnit
 
 internal data class EngineVersion(val version: String, val file: String, val sha256: String)
 internal enum class EnginePhase { Stopped, Starting, Running, Stopping, Failed }
-/** The start error when the phone has no Wi-Fi, hotspot or VPN address; screens that already explain this hide it. */
-internal const val NO_NETWORK = "Connect to Wi-Fi, a hotspot or a VPN."
+/** The start error when the phone has no Wi-Fi, mobile data, hotspot or VPN address; screens that already explain this hide it. */
+internal const val NO_NETWORK = "Connect to Wi-Fi, mobile data, a hotspot or a VPN."
 
 internal data class EngineState(val phase: EnginePhase = EnginePhase.Stopped, val version: String? = null, val error: String? = null, val overview: JSONObject? = null)
 
