@@ -1,5 +1,6 @@
 package org.madmail.mobile
 
+import androidx.compose.ui.res.stringResource
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
@@ -51,14 +52,16 @@ internal fun EnginePhase.power() = when (this) {
 @Composable
 internal fun HostingStatus(phase: EnginePhase, enabled: Boolean = true, unreachable: Boolean = false, onToggle: (Boolean) -> Unit) {
     PowerRow(phase.power(),
-        when (phase) { EnginePhase.Running -> "Hosting is live"; EnginePhase.Starting -> "Starting…"; EnginePhase.Stopping -> "Stopping…"; EnginePhase.Failed -> "Hosting failed"; else -> "Hosting is off" },
+        stringResource(when (phase) { EnginePhase.Running -> R.string.common_hosting_live; EnginePhase.Starting -> R.string.common_hosting_starting; EnginePhase.Stopping -> R.string.common_hosting_stopping
+            EnginePhase.Failed -> R.string.common_hosting_failed; else -> R.string.common_hosting_off }),
         when {
-            phase == EnginePhase.Running && unreachable -> "No network, so guests can’t reach it."
-            phase == EnginePhase.Running -> "Ready for connections."; phase == EnginePhase.Failed -> "See the error below."; !enabled -> "Choose a version below."; else -> null
+            phase == EnginePhase.Running && unreachable -> stringResource(R.string.common_hosting_detail_unreachable)
+            phase == EnginePhase.Running -> stringResource(R.string.common_hosting_detail_ready); phase == EnginePhase.Failed -> stringResource(R.string.common_hosting_detail_error)
+            !enabled -> stringResource(R.string.common_hosting_detail_choose_version); else -> null
         },
         PowerConfirm(
-            PowerQuestion("Turn on hosting?", "This phone starts serving mail. Keep it charged and online.", "Turn on"),
-            PowerQuestion("Turn off hosting?", "People on this phone can’t send or receive mail until you turn it back on.", "Turn off")),
+            PowerQuestion(stringResource(R.string.common_hosting_on_title), stringResource(R.string.common_hosting_on_text), stringResource(R.string.common_hosting_on_action)),
+            PowerQuestion(stringResource(R.string.common_hosting_off_title), stringResource(R.string.common_hosting_off_text), stringResource(R.string.common_hosting_off_action))),
         enabled = enabled, onToggle = onToggle)
 }
 
@@ -84,7 +87,7 @@ internal fun PowerRow(power: PowerPhase, title: String, detail: String?, confirm
         last = power
     }
     val spinning = power.busy || working
-    val state = when (power) { PowerPhase.On -> "On"; PowerPhase.Starting -> "Starting"; PowerPhase.Stopping -> "Stopping"; else -> "Off" }
+    val state = stringResource(when (power) { PowerPhase.On -> R.string.common_power_on; PowerPhase.Starting -> R.string.common_power_starting; PowerPhase.Stopping -> R.string.common_power_stopping; else -> R.string.common_power_off })
     Row(Modifier.fillMaxWidth()
         .toggleable(power.on, enabled = enabled && !spinning, role = Role.Switch) {
             haptics.performHapticFeedback(HapticFeedbackType.ContextClick); asking = it

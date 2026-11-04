@@ -44,6 +44,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -74,7 +75,7 @@ import java.time.format.FormatStyle
 
 private data class Invitation(val token: String, val name: String, val used: Int, val pending: Int, val limit: Int, val status: String, val expires: String?) {
     val expiry: Instant? get() = expires?.let { runCatching { Instant.parse(it.replace(' ', 'T').let { t -> if (t.endsWith('Z') || t.contains('+')) t else "${t}Z" }) }.getOrNull() }
-    val statusLabel: String get() = when { expiry?.isBefore(Instant.now()) == true || status == "expired" -> "Expired"; used + pending >= limit || status == "exhausted" -> "Used up"; status == "active" -> "Active"; else -> "Unavailable" }
+    val statusRes: Int get() = when { expiry?.isBefore(Instant.now()) == true || status == "expired" -> R.string.screen_status_expired; used + pending >= limit || status == "exhausted" -> R.string.screen_status_used_up; status == "active" -> R.string.screen_status_active; else -> R.string.screen_status_unavailable }
     val active: Boolean get() = status == "active" && used + pending < limit && expiry?.isBefore(Instant.now()) != true
 }
 
@@ -121,7 +122,7 @@ internal fun RegistrationScreen(serverId: String, serverName: String, remote: Re
     }
     fun select(value: String) { code = value; onEndpointChange(value) }
     LaunchedEffect(creationState.code) {
-        creationState.code?.let { rotation.stop(); select(it); creation.consume(); create = false; refresh++; toaster.show("Invitation created.") }
+        creationState.code?.let { rotation.stop(); select(it); creation.consume(); create = false; refresh++; toaster.show(context.getString(R.string.screen_invitation_created)) }
     }
     LaunchedEffect(copied) { if (copied) { delay(1800); copied = false } }
     // A new account QR every few seconds, only while the code is in view: page on screen, no sheet over it, app in front, server ready.
@@ -137,11 +138,11 @@ internal fun RegistrationScreen(serverId: String, serverName: String, remote: Re
                 val array = request("GET").getJSONArray("tokens")
                 val rotated = rotation.tokens()
                 invitations = (0 until array.length()).map { array.getJSONObject(it) }.filter { it.getString("token") !in rotated }.map {
-                    Invitation(it.getString("token"), it.optString("comment").ifBlank { "Invitation" }, it.optInt("used_count"), it.optInt("pending_reservations"), it.getInt("max_uses"), it.getString("status"), it.optString("expires_at").takeUnless { s -> s.isBlank() || s == "null" })
+                    Invitation(it.getString("token"), it.optString("comment").ifBlank { context.getString(R.string.screen_invitation) }, it.optInt("used_count"), it.optInt("pending_reservations"), it.getInt("max_uses"), it.getString("status"), it.optString("expires_at").takeUnless { s -> s.isBlank() || s == "null" })
                 }
                 loaded = true
             } catch (e: CancellationException) { throw e }
-            catch (_: Exception) { error = "Couldn’t load invitations. Refresh to retry."; break }
+            catch (_: Exception) { error = context.getString(R.string.screen_load_invitations_failed); break }
             delay(30000)
         } while (isActive)
     }
@@ -157,19 +158,19 @@ internal fun RegistrationScreen(serverId: String, serverName: String, remote: Re
     Column(Modifier.fillMaxWidth().animateContentSize(tween(300, easing = Emphasized)), verticalArrangement = Arrangement.spacedBy(24.dp)) {
         if (bitmap != null) {
             Column {
-                Caption(if (personal) "Account QR" else "Invitation")
+                Caption(if (personal) stringResource(R.string.screen_account_qr) else stringResource(R.string.screen_invitation))
                 Group {
                     Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(if (personal) "One person. One account." else selected!!.name, Modifier.semantics { heading() }, style = MaterialTheme.typography.titleLarge,
+                        Text(if (personal) stringResource(R.string.screen_one_person_one_account) else selected!!.name, Modifier.semantics { heading() }, style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
-                        Text(if (personal) "Scan in Delta Chat." else "Scan with a camera.",
+                        Text(if (personal) stringResource(R.string.screen_scan_delta) else stringResource(R.string.screen_scan_camera),
                             style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant, textAlign = TextAlign.Center)
                         Spacer(Modifier.height(12.dp))
                         Box(Modifier.widthIn(max = 280.dp).fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(18.dp)).background(Color.White)
-                            .clickable(onClickLabel = "Enlarge QR code", role = Role.Button, onClick = rememberTap { large = true })) {
+                            .clickable(onClickLabel = stringResource(R.string.screen_enlarge_qr), role = Role.Button, onClick = rememberTap { large = true })) {
                             // A short crossfade so each new code reads as a refresh, not a flicker.
                             Crossfade(bitmap, animationSpec = tween(180), label = "qr") { image ->
-                                Image(image.asImageBitmap(), "${if (personal) "Account" else "Invitation"} QR code for $serverName. Tap to enlarge.", Modifier.fillMaxSize().padding(12.dp))
+                                Image(image.asImageBitmap(), if (personal) stringResource(R.string.screen_qr_desc_account, serverName) else stringResource(R.string.screen_qr_desc_invitation, serverName), Modifier.fillMaxSize().padding(12.dp))
                             }
                         }
                         if (personal) RotationTimer(rotationState.issuedAt, Modifier.widthIn(max = 280.dp).fillMaxWidth().padding(top = 10.dp))
@@ -179,79 +180,79 @@ internal fun RegistrationScreen(serverId: String, serverName: String, remote: Re
                         InvitationRows(selected!!, numbers)
                     }
                 }
-                Footer(if (personal) "Contains a password. Give it to one person only." else "Revoking stops new sign-ups. Existing accounts stay.")
+                Footer(if (personal) stringResource(R.string.screen_footer_account_pw) else stringResource(R.string.screen_footer_revoke))
             }
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    PillButton(if (copied) "Copied" else "Copy", onClick = {
+                    PillButton(if (copied) stringResource(R.string.screen_copied) else stringResource(R.string.screen_copy), onClick = {
                         handOut()
                         val clip = ClipData.newPlainText("Madmail invitation", shown)
                         if (android.os.Build.VERSION.SDK_INT >= 33) clip.description.extras = android.os.PersistableBundle().apply { putBoolean("android.content.extra.IS_SENSITIVE", true) }
                         (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(clip)
                         copied = true
                     }, Modifier.weight(1f), icon = if (copied) Icons.Rounded.Check else Icons.Rounded.ContentCopy, filled = true, wide = true)
-                    PillButton("Share", onClick = {
+                    PillButton(stringResource(R.string.screen_share), onClick = {
                         handOut()
-                        context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, shown) }, "Share invitation"))
+                        context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, shown) }, context.getString(R.string.screen_share_invitation)))
                     }, Modifier.weight(1f), icon = Icons.Rounded.Share, wide = true)
                 }
                 Group {
                     if (personal) {
-                        ActionRow("Open in Delta Chat", onClick = {
+                        ActionRow(stringResource(R.string.screen_open_delta), onClick = {
                             handOut()
                             runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(shown))) }
-                                .onFailure { toaster.show("Install Delta Chat, or scan on another device.", error = true) }
+                                .onFailure { toaster.show(context.getString(R.string.screen_install_delta), error = true) }
                         }, icon = Icons.AutoMirrored.Rounded.OpenInNew)
                         RowDivider(48.dp)
                     }
-                    ActionRow("Enlarge", onClick = { large = true }, icon = Icons.Rounded.Fullscreen)
+                    ActionRow(stringResource(R.string.screen_enlarge), onClick = { large = true }, icon = Icons.Rounded.Fullscreen)
                     RowDivider(48.dp)
-                    ActionRow("Share QR image", onClick = { handOut(); runCatching { shareInvitationImage(context, bitmap) }.onFailure { toaster.show("Couldn’t share the QR image.", error = true) } }, icon = Icons.Rounded.Image)
+                    ActionRow(stringResource(R.string.screen_share_qr_image), onClick = { handOut(); runCatching { shareInvitationImage(context, bitmap) }.onFailure { toaster.show(context.getString(R.string.screen_qr_share_failed), error = true) } }, icon = Icons.Rounded.Image)
                     RowDivider(48.dp)
-                    ActionRow(if (personal) "Stop" else "Hide", onClick = { if (personal) rotation.stop() else select("") }, icon = Icons.Rounded.VisibilityOff)
+                    ActionRow(if (personal) stringResource(R.string.screen_stop) else stringResource(R.string.screen_hide), onClick = { if (personal) rotation.stop() else select("") }, icon = Icons.Rounded.VisibilityOff)
                 }
             }
         } else if (personal && ready) Column {
-            Caption("Account QR")
+            Caption(stringResource(R.string.screen_account_qr))
             Group {
-                InfoRow(Tint.Purple, Icons.Rounded.QrCode2, "Preparing account QR…", rotationState.error) {
+                InfoRow(Tint.Purple, Icons.Rounded.QrCode2, stringResource(R.string.screen_preparing_qr), rotationState.error) {
                     CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                 }
             }
         } else {
             // The page title already names the page; only a line that tells the user something stays above the content.
-            val body = if (!ready) if (phone) "Start hosting from Home." else "Connect from Home." else if (shown.isNotBlank()) "This invitation is unavailable. Choose or create another." else null
+            val body = if (!ready) if (phone) stringResource(R.string.screen_start_hosting_from_home) else stringResource(R.string.screen_connect_from_home) else if (shown.isNotBlank()) stringResource(R.string.screen_invitation_unavailable) else null
             // Without a shared network the notice below says why nothing can be created, so the line above stays out of its way.
             if (!offline) body?.let { Text(it, Modifier.padding(horizontal = 4.dp), style = MaterialTheme.typography.bodyLarge, color = colors.onSurfaceVariant) }
         }
         AnimatedVisibility(offline, enter = fadeIn(tween(220)) + expandVertically(tween(300, easing = Emphasized)),
             exit = fadeOut(tween(120)) + shrinkVertically(tween(260, easing = Emphasized))) { NoNetworkNotice() }
         Column {
-            Caption("Guest address")
+            Caption(stringResource(R.string.screen_guest_address))
             Group {
-                Box(Modifier.fillMaxWidth().clickable(enabled = !busy, role = Role.Button, onClickLabel = "Edit guest address", onClick = rememberTap { editAddress = true })) {
-                    InfoRow(Tint.Teal, Icons.Rounded.Link, "Address", origin.ifBlank { if (offline) "Waiting for a network" else "Choose an address" }) {
+                Box(Modifier.fillMaxWidth().clickable(enabled = !busy, role = Role.Button, onClickLabel = stringResource(R.string.screen_edit_guest_address), onClick = rememberTap { editAddress = true })) {
+                    InfoRow(Tint.Teal, Icons.Rounded.Link, stringResource(R.string.screen_address), origin.ifBlank { if (offline) stringResource(R.string.screen_waiting_network) else stringResource(R.string.screen_choose_address) }) {
                         Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) { Icon(Icons.Rounded.Edit, null, Modifier.size(20.dp), tint = colors.onSurfaceVariant) }
                     }
                 }
             }
-            if (phone && !offline) Footer("Update it when the network changes.")
+            if (phone && !offline) Footer(stringResource(R.string.screen_update_network))
         }
         Column {
             if (!personal) {
-                PillButton("Show account QR", onClick = {
+                PillButton(stringResource(R.string.screen_show_account_qr), onClick = {
                     error = null
                     prefs.edit().putString("origin", origin).apply()
                     select(""); rotation.start(origin)
                 }, icon = Icons.Rounded.QrCode2, filled = canCreate, enabled = canCreate, wide = true)
-                Footer("Each QR holds a password and trusts this server’s self-signed certificate.")
+                Footer(stringResource(R.string.screen_footer_selfsigned_qr))
                 Spacer(Modifier.height(16.dp))
             }
-            PillButton("Create invitation", onClick = { create = true }, icon = Icons.Rounded.Add, enabled = canCreate, wide = true)
+            PillButton(stringResource(R.string.screen_create_invitation), onClick = { create = true }, icon = Icons.Rounded.Add, enabled = canCreate, wide = true)
         }
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Group {
-                NavRow({ TintIcon(Tint.Purple, Icons.Rounded.ConfirmationNumber) }, "Invitations", value = if (loaded) numbers.format(invitations.size) else null,
+                NavRow({ TintIcon(Tint.Purple, Icons.Rounded.ConfirmationNumber) }, stringResource(R.string.screen_invitations), value = if (loaded) numbers.format(invitations.size) else null,
                     enabled = ready) { manage = true }
             }
             if (busy) InviteProgress()
@@ -263,15 +264,15 @@ internal fun RegistrationScreen(serverId: String, serverName: String, remote: Re
     if (editAddress) GuestAddressSheet(origin, remote, onDismiss = { editAddress = false }) { updated ->
         origin = updated; prefs.edit().putString("origin", origin).apply()
         if (personal) rotation.retarget(updated) else select(selected?.let { InviteLinks.invite(updated, it.token) }.orEmpty())
-        editAddress = false; toaster.show("Address updated.")
+        editAddress = false; toaster.show(context.getString(R.string.screen_address_updated))
         // New accounts take this IP as their domain, so the phone server restarts onto it when it changed.
         val host = java.net.URI(updated).host
         if (phone && GuestAddresses.ipv4(host)) scope.launch(Dispatchers.IO) {
             val before = local.mailHost
             runCatching { local.useMailHost(host) }
-                .onSuccess { switched -> if (!switched) error = "Couldn’t switch to $host. Check this phone’s network."
-                    else if (before != host && local.mailHost == host) toaster.show("Hosting restarted on $host.") }
-                .onFailure { error = it.message ?: "Couldn’t restart hosting. Start it from Home." }
+                .onSuccess { switched -> if (!switched) error = context.getString(R.string.screen_switch_failed, host)
+                    else if (before != host && local.mailHost == host) toaster.show(context.getString(R.string.screen_hosting_restarted, host)) }
+                .onFailure { error = it.message ?: context.getString(R.string.screen_restart_failed) }
         }
     }
     if (create) {
@@ -282,44 +283,44 @@ internal fun RegistrationScreen(serverId: String, serverName: String, remote: Re
         val focus = LocalFocusManager.current
         val fields = remember { List(2) { FocusRequester() } }
         KitSheet(onDismiss = { if (!busy) create = false }) {
-            SheetHeader("New invitation", mark = { TintIcon(Tint.Purple, if (account) Icons.Rounded.PersonAdd else Icons.Rounded.Link, size = 40.dp) })
+            SheetHeader(stringResource(R.string.screen_new_invitation), mark = { TintIcon(Tint.Purple, if (account) Icons.Rounded.PersonAdd else Icons.Rounded.Link, size = 40.dp) })
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = GroupGutter).padding(bottom = 32.dp)
                 .animateContentSize(tween(300, easing = Emphasized))) {
-                Caption("Type")
+                Caption(stringResource(R.string.screen_type))
                 Group {
-                    InviteCheckRow("Account QR", null, account, !busy, { TintIcon(Tint.Purple, Icons.Rounded.PersonAdd, size = 40.dp) }) { account = true }
+                    InviteCheckRow(stringResource(R.string.screen_account_qr), null, account, !busy, { TintIcon(Tint.Purple, Icons.Rounded.PersonAdd, size = 40.dp) }) { account = true }
                     RowDivider(70.dp)
-                    InviteCheckRow("Browser link", null, !account, !busy, { TintIcon(Tint.Teal, Icons.Rounded.Link, size = 40.dp) }) { account = false }
+                    InviteCheckRow(stringResource(R.string.screen_browser_link), null, !account, !busy, { TintIcon(Tint.Teal, Icons.Rounded.Link, size = 40.dp) }) { account = false }
                 }
-                Footer(if (account) "A new QR every 5 seconds, for Delta Chat." else "Guests open it in a browser.")
+                Footer(if (account) stringResource(R.string.screen_footer_new_qr) else stringResource(R.string.screen_footer_guests_browser))
                 Spacer(Modifier.height(24.dp))
-                Caption("Details")
+                Caption(stringResource(R.string.screen_details))
                 Group {
-                    FieldRow("Label", title, { if (!busy) title = it.take(120) }, "Optional", fields[0],
+                    FieldRow(stringResource(R.string.screen_label), title, { if (!busy) title = it.take(120) }, stringResource(R.string.screen_optional), fields[0],
                         fieldKeyboard(KeyboardType.Text, if (account) ImeAction.Done else ImeAction.Next), { if (account) focus.clearFocus() else fields[1].requestFocus() })
                     if (!account) {
                         RowDivider(16.dp)
-                        FieldRow("Max people", uses, { if (!busy) uses = it.filter(Char::isDigit).take(6) }, "1", fields[1],
+                        FieldRow(stringResource(R.string.screen_max_people), uses, { if (!busy) uses = it.filter(Char::isDigit).take(6) }, "1", fields[1],
                             fieldKeyboard(KeyboardType.Number, ImeAction.Done), { focus.clearFocus() })
                     }
                 }
                 Spacer(Modifier.height(24.dp))
-                Caption(if (account) "Sign in within" else "Expires after")
+                Caption(if (account) stringResource(R.string.screen_sign_in_within) else stringResource(R.string.screen_expires_after))
                 Group {
-                    listOf("1h" to "1 hour", "24h" to "1 day", "168h" to "7 days", "" to "Never").forEachIndexed { index, (value, label) ->
+                    listOf("1h" to stringResource(R.string.screen_expiry_1h), "24h" to stringResource(R.string.screen_expiry_1d), "168h" to stringResource(R.string.screen_expiry_7d), "" to stringResource(R.string.screen_expiry_never)).forEachIndexed { index, (value, label) ->
                         if (index > 0) RowDivider(16.dp)
                         InviteCheckRow(label, null, expiry == value, !busy) { expiry = value }
                     }
                 }
-                Footer(if (account) "The QR trusts this server’s self-signed certificate." else "Browsers may warn about the self-signed certificate.")
+                Footer(if (account) stringResource(R.string.screen_footer_qr_trusts) else stringResource(R.string.screen_footer_browser_warn))
                 Column(Modifier.padding(top = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     if (busy) InviteProgress()
                     error?.let { InviteStatus(Tint.Red, Icons.Rounded.PriorityHigh, it) }
                     creationState.error?.let { InviteStatus(Tint.Red, Icons.Rounded.PriorityHigh, it) }
-                    if (creationState.uncertain) PillButton("Review invitations", onClick = { create = false; manage = true; refresh++ }, wide = true)
+                    if (creationState.uncertain) PillButton(stringResource(R.string.screen_review_invitations), onClick = { create = false; manage = true; refresh++ }, wide = true)
                 }
                 Spacer(Modifier.height(20.dp))
-                BrandButton(if (account) "Create account QR" else "Create invite link", enabled = !busy && !creationState.uncertain && (account || (uses.toIntOrNull() ?: 0) in 1..999999)) {
+                BrandButton(if (account) stringResource(R.string.screen_create_account_qr) else stringResource(R.string.screen_create_invite_link), enabled = !busy && !creationState.uncertain && (account || (uses.toIntOrNull() ?: 0) in 1..999999)) {
                     error = null
                     prefs.edit().putString("origin", origin).apply()
                     if (account) { select(""); rotation.start(origin, title, expiry); create = false }
@@ -330,23 +331,23 @@ internal fun RegistrationScreen(serverId: String, serverName: String, remote: Re
     }
     if (manage) KitSheet(onDismiss = { manage = false }) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-            Box(Modifier.weight(1f)) { SheetHeader("Invitations", serverName,
+            Box(Modifier.weight(1f)) { SheetHeader(stringResource(R.string.screen_invitations), serverName,
                 mark = { TintIcon(Tint.Purple, Icons.Rounded.ConfirmationNumber, size = 40.dp) }) }
             IconButton(onClick = { error = null; refresh++ }, enabled = !busy, modifier = Modifier.padding(top = 4.dp, end = 12.dp)) {
-                Icon(Icons.Rounded.Refresh, "Refresh invitations", tint = colors.onSurfaceVariant)
+                Icon(Icons.Rounded.Refresh, stringResource(R.string.screen_refresh_invitations), tint = colors.onSurfaceVariant)
             }
         }
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = GroupGutter).padding(bottom = 32.dp)
             .animateContentSize(tween(300, easing = Emphasized)), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (!loaded) Group { InfoRow(Tint.Gray, Icons.Rounded.HourglassEmpty, "Not loaded") }
-            else if (invitations.isEmpty()) Group { InfoRow(Tint.Gray, Icons.Rounded.ConfirmationNumber, "No invitations") }
+            if (!loaded) Group { InfoRow(Tint.Gray, Icons.Rounded.HourglassEmpty, stringResource(R.string.screen_not_loaded)) }
+            else if (invitations.isEmpty()) Group { InfoRow(Tint.Gray, Icons.Rounded.ConfirmationNumber, stringResource(R.string.screen_no_invitations)) }
             error?.let { InviteStatus(Tint.Red, Icons.Rounded.PriorityHigh, it) }
-            if (creationState.uncertain && loaded) PillButton("I’ve checked", onClick = { creation.reviewed() }, wide = true)
+            if (creationState.uncertain && loaded) PillButton(stringResource(R.string.screen_checked), onClick = { creation.reviewed() }, wide = true)
             if (invitations.isNotEmpty()) Group {
                 invitations.forEachIndexed { index, invitation ->
                     if (index > 0) RowDivider(64.dp)
                     Row(Modifier.fillMaxWidth().padding(end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Row(Modifier.weight(1f).clickable(enabled = invitation.active && InviteLinks.origin(origin) != null && !busy, onClickLabel = "Show invitation QR", onClick = rememberTap {
+                        Row(Modifier.weight(1f).clickable(enabled = invitation.active && InviteLinks.origin(origin) != null && !busy, onClickLabel = stringResource(R.string.screen_show_invitation_qr), onClick = rememberTap {
                                 rotation.stop(); select(InviteLinks.invite(origin, invitation.token)); manage = false
                             }).heightIn(min = 60.dp).padding(start = 14.dp, top = 12.dp, bottom = 12.dp, end = 8.dp),
                             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -356,7 +357,7 @@ internal fun RegistrationScreen(serverId: String, serverName: String, remote: Re
                                 InvitationSummary(invitation, numbers)
                             }
                         }
-                        IconButton(onClick = { revoke = invitation }, enabled = !busy) { Icon(Icons.Rounded.DeleteOutline, "Revoke ${invitation.name}", tint = colors.error) }
+                        IconButton(onClick = { revoke = invitation }, enabled = !busy) { Icon(Icons.Rounded.DeleteOutline, stringResource(R.string.screen_revoke_named, invitation.name), tint = colors.error) }
                     }
                 }
             }
@@ -364,30 +365,30 @@ internal fun RegistrationScreen(serverId: String, serverName: String, remote: Re
     }
     revoke?.let { invitation -> AlertDialog(onDismissRequest = { if (!busy) revoke = null }, containerColor = panelColor(), shape = RoundedCornerShape(28.dp),
         icon = { TintIcon(Tint.Red, Icons.Rounded.DeleteOutline, size = 40.dp) },
-        title = { Text("Revoke ${invitation.name}?", fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center) },
-        text = { Text("New sign-ups stop. Existing accounts stay.", color = colors.onSurfaceVariant) }, confirmButton = {
+        title = { Text(stringResource(R.string.screen_revoke_title, invitation.name), fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center) },
+        text = { Text(stringResource(R.string.screen_revoke_body), color = colors.onSurfaceVariant) }, confirmButton = {
         TextButton(enabled = !busy, onClick = {
             revoking = true
             scope.launch {
                 try {
                     request("DELETE", JSONObject().put("token", invitation.token))
                     if (selected?.token == invitation.token) select("")
-                    toaster.show("Invitation revoked."); revoke = null; refresh++
+                    toaster.show(context.getString(R.string.screen_invitation_revoked)); revoke = null; refresh++
                 } catch (e: CancellationException) { throw e }
-                catch (_: Exception) { error = "Revoke not confirmed. Refresh to check."; revoke = null; refresh++ }
+                catch (_: Exception) { error = context.getString(R.string.screen_revoke_unconfirmed); revoke = null; refresh++ }
                 finally { revoking = false }
             }
-        }) { Text("Revoke", color = colors.error, fontWeight = FontWeight.SemiBold) }
-    }, dismissButton = { TextButton(onClick = { revoke = null }, enabled = !busy) { Text("Cancel", fontWeight = FontWeight.SemiBold) } }) }
+        }) { Text(stringResource(R.string.screen_revoke), color = colors.error, fontWeight = FontWeight.SemiBold) }
+    }, dismissButton = { TextButton(onClick = { revoke = null }, enabled = !busy) { Text(stringResource(R.string.screen_cancel), fontWeight = FontWeight.SemiBold) } }) }
     if (large && bitmap != null) Dialog(onDismissRequest = { large = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         val view = LocalView.current
         DisposableEffect(view) { val previous = view.keepScreenOn; view.keepScreenOn = true; onDispose { view.keepScreenOn = previous } }
         Column(Modifier.fillMaxWidth().padding(16.dp).clip(RoundedCornerShape(28.dp)).background(Color.White).padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text(serverName, Modifier.semantics { heading() }, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, color = Color.Black)
-            Image(bitmap.asImageBitmap(), "QR code for $serverName", Modifier.fillMaxWidth().aspectRatio(1f))
-            Text(if (personal) "Scan in Delta Chat · One person only" else "Scan with your camera", style = MaterialTheme.typography.bodyMedium, color = Color.Black.copy(alpha = 0.6f))
-            PillButton("Close", onClick = { large = false }, wide = true)
+            Image(bitmap.asImageBitmap(), stringResource(R.string.screen_qr_for, serverName), Modifier.fillMaxWidth().aspectRatio(1f))
+            Text(if (personal) stringResource(R.string.screen_scan_delta_one) else stringResource(R.string.screen_scan_camera_yours), style = MaterialTheme.typography.bodyMedium, color = Color.Black.copy(alpha = 0.6f))
+            PillButton(stringResource(R.string.screen_close), onClick = { large = false }, wide = true)
         }
     }
 }
@@ -423,17 +424,21 @@ private fun InviteProgress() = LinearProgressIndicator(Modifier.fillMaxWidth().p
 
 @Composable
 private fun InvitationRows(invitation: Invitation, numbers: NumberFormat) {
-    ValueRow("Used", "${numbers.format(invitation.used)} of ${numbers.format(invitation.limit)}${if (invitation.pending > 0) " · ${numbers.format(invitation.pending)} pending" else ""}")
+    val usedText = if (invitation.pending > 0) stringResource(R.string.screen_used_of_pending, numbers.format(invitation.used), numbers.format(invitation.limit), numbers.format(invitation.pending))
+        else stringResource(R.string.screen_used_of, numbers.format(invitation.used), numbers.format(invitation.limit))
+    ValueRow(stringResource(R.string.screen_used), usedText)
     RowDivider(16.dp)
-    ValueRow("Status", invitation.statusLabel, valueColor = if (invitation.active) successText() else MaterialTheme.colorScheme.onSurfaceVariant)
+    ValueRow(stringResource(R.string.screen_status), stringResource(invitation.statusRes), valueColor = if (invitation.active) successText() else MaterialTheme.colorScheme.onSurfaceVariant)
     RowDivider(16.dp)
-    ValueRow("Expires", invitation.expiry?.atZone(ZoneId.systemDefault())?.format(DateTimeFormatter.ofLocalizedDateTime(FormatStyle.SHORT)) ?: "No expiry")
+    ValueRow(stringResource(R.string.screen_expires), invitation.expiry?.atZone(ZoneId.systemDefault())?.format(DateTimeFormatter.ofLocalizedDateTime(FormatStyle.SHORT)) ?: stringResource(R.string.screen_no_expiry))
 }
 
 @Composable
 private fun InvitationSummary(invitation: Invitation, numbers: NumberFormat) {
-    val expires = invitation.expiry?.atZone(ZoneId.systemDefault())?.format(DateTimeFormatter.ofLocalizedDateTime(FormatStyle.SHORT)) ?: "No expiry"
-    Text("${numbers.format(invitation.used)} / ${numbers.format(invitation.limit)} used${if (invitation.pending > 0) " · ${numbers.format(invitation.pending)} pending" else ""} · ${invitation.statusLabel} · $expires",
+    val expires = invitation.expiry?.atZone(ZoneId.systemDefault())?.format(DateTimeFormatter.ofLocalizedDateTime(FormatStyle.SHORT)) ?: stringResource(R.string.screen_no_expiry)
+    val status = stringResource(invitation.statusRes)
+    Text(if (invitation.pending > 0) stringResource(R.string.screen_summary_pending, numbers.format(invitation.used), numbers.format(invitation.limit), numbers.format(invitation.pending), status, expires)
+        else stringResource(R.string.screen_summary, numbers.format(invitation.used), numbers.format(invitation.limit), status, expires),
         style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
@@ -469,5 +474,5 @@ private fun shareInvitationImage(context: Context, bitmap: Bitmap) {
         type = "image/png"; putExtra(Intent.EXTRA_STREAM, uri)
         clipData = ClipData.newUri(context.contentResolver, "Invitation QR", uri)
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-    }, "Share QR code"))
+    }, context.getString(R.string.screen_share_qr_code)))
 }

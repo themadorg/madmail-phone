@@ -47,6 +47,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.madmail.mobile.core.RemoteServer
@@ -84,9 +85,9 @@ internal fun ServerPicker(selectedId: String, remotes: List<RemoteServer>, ident
     var editMode by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
     val context = androidx.compose.ui.platform.LocalContext.current
-    val entries = (if (phoneConfigured) listOf(Triple("phone", "This phone", "On this device")) else emptyList()) + remotes.map {
+    val entries = (if (phoneConfigured) listOf(Triple("phone", stringResource(R.string.remote_this_phone), stringResource(R.string.remote_on_this_device))) else emptyList()) + remotes.map {
         val options = context.getSharedPreferences("remote-options-${it.id}", android.content.Context.MODE_PRIVATE)
-        Triple(it.id, it.host, if (options.getString("preferred", "ssh") == "api") "Admin API · ${it.host}" else it.address)
+        Triple(it.id, it.host, if (options.getString("preferred", "ssh") == "api") context.getString(R.string.remote_transport_api, it.host) else it.address)
     }
     SideEffect { onEditing(editing != null) }
     DisposableEffect(Unit) { onDispose { onEditing(false) } }
@@ -102,10 +103,10 @@ internal fun ServerPicker(selectedId: String, remotes: List<RemoteServer>, ident
         Column(Modifier.fillMaxWidth().imePadding().animateContentSize(tween(300, easing = Emphasized)).padding(bottom = 24.dp)) {
             removing?.let { id ->
                 val name = identities[id]?.name?.ifBlank { null } ?: entries.firstOrNull { it.first == id }?.second ?: id
-                KitDialog("Remove $name?", "Its saved sign-in and invitations on this phone are deleted. The server itself keeps running.", "Remove",
+                KitDialog(stringResource(R.string.remote_remove_title, name), stringResource(R.string.remote_remove_body), stringResource(R.string.remote_remove),
                     onConfirm = { removing = null; onRemove(id) }, onDismiss = { removing = null })
             }
-            SheetHeader("Servers")
+            SheetHeader(stringResource(R.string.remote_servers))
             Column(Modifier.fillMaxWidth().padding(horizontal = GroupGutter)) {
                 if (entries.size > 5) {
                     SearchGroup(query) { query = it }
@@ -118,22 +119,22 @@ internal fun ServerPicker(selectedId: String, remotes: List<RemoteServer>, ident
                             val identity = identities[id] ?: ServerIdentity()
                             val title = identity.name.ifBlank { fallback }
                             var bounds by remember { mutableStateOf(Rect.Zero) }
-                            ServerRow(identity, id == "phone", title, if (editMode) "Name and icon" else address,
+                            ServerRow(identity, id == "phone", title, if (editMode) stringResource(R.string.remote_name_and_icon) else address,
                                 selected = id == selectedId, editMode = editMode, Modifier.onGloballyPositioned { bounds = Rect(it.positionOnScreen(), it.size.toSize()) },
                                 onLongClick = if (editMode) null else ({ peek = id to bounds })) { if (editMode) editing = id else onSelect(id) }
                             peek?.takeIf { it.first == id }?.let { (_, anchor) ->
                                 PeekMenu(anchor, buildList {
-                                    if (id != selectedId) add(MenuAction("Open", Icons.AutoMirrored.Rounded.OpenInNew) { onSelect(id) })
-                                    add(MenuAction("Statistics", Icons.Rounded.BarChart) { onOpen(id, 1) })
-                                    add(MenuAction("Invite", Icons.Rounded.QrCode2) { onOpen(id, 2) })
-                                    add(MenuAction("Settings", Icons.Rounded.Settings) { onOpen(id, 3) })
-                                    add(MenuAction("Name and icon", Icons.Rounded.Edit) { editing = id })
-                                    add(MenuAction("Copy address", Icons.Rounded.ContentCopy) {
+                                    if (id != selectedId) add(MenuAction(stringResource(R.string.remote_open), Icons.AutoMirrored.Rounded.OpenInNew) { onSelect(id) })
+                                    add(MenuAction(stringResource(R.string.remote_statistics), Icons.Rounded.BarChart) { onOpen(id, 1) })
+                                    add(MenuAction(stringResource(R.string.remote_invite), Icons.Rounded.QrCode2) { onOpen(id, 2) })
+                                    add(MenuAction(stringResource(R.string.remote_settings), Icons.Rounded.Settings) { onOpen(id, 3) })
+                                    add(MenuAction(stringResource(R.string.remote_name_and_icon), Icons.Rounded.Edit) { editing = id })
+                                    add(MenuAction(stringResource(R.string.remote_copy_address), Icons.Rounded.ContentCopy) {
                                         val origin = if (id == "phone") localInviteOrigin(context) else fallback
-                                        if (origin.isBlank()) toaster.show("No shared network.", error = true)
-                                        else { clipboard.setText(AnnotatedString(origin)); toaster.show("Address copied.") }
+                                        if (origin.isBlank()) toaster.show(context.getString(R.string.remote_no_shared_network), error = true)
+                                        else { clipboard.setText(AnnotatedString(origin)); toaster.show(context.getString(R.string.remote_address_copied)) }
                                     })
-                                    if (id != "phone") add(MenuAction("Remove server", Icons.Rounded.Delete, destructive = true) { removing = id })
+                                    if (id != "phone") add(MenuAction(stringResource(R.string.remote_remove_server), Icons.Rounded.Delete, destructive = true) { removing = id })
                                 }, onDismiss = { peek = null }) {
                                     ServerRow(identity, id == "phone", title, address, selected = id == selectedId, editMode = false, Modifier, null) {}
                                 }
@@ -141,12 +142,12 @@ internal fun ServerPicker(selectedId: String, remotes: List<RemoteServer>, ident
                             // Server rows: 14dp padding, 36dp mark, 14dp gap, so the text starts at 64dp.
                             RowDivider(64.dp)
                         }
-                        NavRow({ TintIcon(Tint.Red, Icons.Rounded.Add) }, "Add server", onClick = onAdd)
+                        NavRow({ TintIcon(Tint.Red, Icons.Rounded.Add) }, stringResource(R.string.remote_add_server), onClick = onAdd)
                     }
-                    if (visible.isEmpty()) Footer("No matches")
+                    if (visible.isEmpty()) Footer(stringResource(R.string.remote_no_matches))
                 }
                 Row(Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.End) {
-                    PillButton(if (editMode) "Done" else "Edit", { editMode = !editMode }, icon = if (editMode) Icons.Rounded.Check else Icons.Rounded.Edit)
+                    PillButton(if (editMode) stringResource(R.string.remote_done) else stringResource(R.string.remote_edit), { editMode = !editMode }, icon = if (editMode) Icons.Rounded.Check else Icons.Rounded.Edit)
                 }
             }
         }
@@ -158,7 +159,7 @@ private fun ServerRow(identity: ServerIdentity, phone: Boolean, title: String, d
     modifier: Modifier = Modifier, onLongClick: (() -> Unit)? = null, onClick: () -> Unit) {
     val tap = rememberTap(onClick)
     Row(modifier.fillMaxWidth().semantics { this.selected = selected && !editMode }
-        .combinedClickable(role = if (editMode) Role.Button else Role.RadioButton, onLongClickLabel = "More actions", onClick = tap,
+        .combinedClickable(role = if (editMode) Role.Button else Role.RadioButton, onLongClickLabel = stringResource(R.string.remote_more_actions), onClick = tap,
             onLongClick = onLongClick)
         .heightIn(min = 60.dp).padding(start = 14.dp, end = if (editMode) 10.dp else 14.dp, top = 12.dp, bottom = 12.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -167,7 +168,7 @@ private fun ServerRow(identity: ServerIdentity, phone: Boolean, title: String, d
             Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        if (editMode) Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, "Edit appearance", tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
+        if (editMode) Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, stringResource(R.string.remote_edit_appearance), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
         else if (selected) SelectedCheck()
     }
 }
@@ -177,16 +178,17 @@ private fun SearchGroup(query: String, onQuery: (String) -> Unit) {
     val colors = MaterialTheme.colorScheme
     val text = MaterialTheme.typography.bodyLarge
     val focus = LocalFocusManager.current
+    val findLabel = stringResource(R.string.remote_find_server)
     Group {
         Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Icon(Icons.Rounded.Search, null, Modifier.size(22.dp), tint = colors.onSurfaceVariant)
-            BasicTextField(query, onQuery, Modifier.weight(1f).padding(vertical = 14.dp).semantics { contentDescription = "Find a server" }, singleLine = true,
+            BasicTextField(query, onQuery, Modifier.weight(1f).padding(vertical = 14.dp).semantics { contentDescription = findLabel }, singleLine = true,
                 textStyle = text.copy(color = colors.onSurface), cursorBrush = SolidColor(colors.primary),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search), keyboardActions = KeyboardActions(onSearch = { focus.clearFocus() }),
                 decorationBox = { inner ->
                     Box(contentAlignment = Alignment.CenterStart) {
-                        if (query.isEmpty()) Text("Find a server", style = text, color = colors.onSurfaceVariant.copy(alpha = 0.85f))
+                        if (query.isEmpty()) Text(findLabel, style = text, color = colors.onSurfaceVariant.copy(alpha = 0.85f))
                         inner()
                     }
                 })
@@ -207,17 +209,17 @@ private fun IdentityEditor(fallback: String, phone: Boolean, initial: ServerIden
     val goBack: () -> Unit = { if (dirty) discard = true else onCancel() }
     BackHandler(onBack = goBack)
     if (discard) AlertDialog(onDismissRequest = { discard = false }, containerColor = panelColor(), shape = RoundedCornerShape(28.dp),
-        title = { Text("Discard changes?", fontWeight = FontWeight.SemiBold) },
-        confirmButton = { TextButton(onClick = onCancel) { Text("Discard", color = MaterialTheme.colorScheme.error) } },
-        dismissButton = { TextButton(onClick = { discard = false }) { Text("Keep editing") } })
+        title = { Text(stringResource(R.string.remote_discard_title), fontWeight = FontWeight.SemiBold) },
+        confirmButton = { TextButton(onClick = onCancel) { Text(stringResource(R.string.remote_discard), color = MaterialTheme.colorScheme.error) } },
+        dismissButton = { TextButton(onClick = { discard = false }) { Text(stringResource(R.string.remote_keep_editing)) } })
     val focus = LocalFocusManager.current
     val nameFocus = remember { FocusRequester() }
     val emojiFocus = remember { FocusRequester() }
     Column(Modifier.fillMaxWidth().imePadding().padding(bottom = 24.dp)) {
         Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = GroupGutter, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = goBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back to servers") }
-            Text("Appearance", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-            PillButton("Done", { focus.clearFocus(); onSave(ServerIdentity(name.trim(), mark)) }, filled = true, enabled = dirty)
+            IconButton(onClick = goBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.remote_back_to_servers)) }
+            Text(stringResource(R.string.remote_appearance), Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            PillButton(stringResource(R.string.remote_done), { focus.clearFocus(); onSave(ServerIdentity(name.trim(), mark)) }, filled = true, enabled = dirty)
         }
         Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()).padding(horizontal = GroupGutter)) {
             Group {
@@ -226,18 +228,18 @@ private fun IdentityEditor(fallback: String, phone: Boolean, initial: ServerIden
                     ServerMark(mark, phone)
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(name.ifBlank { fallback }, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        Text("Preview", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(stringResource(R.string.remote_preview), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
                 RowDivider(16.dp)
-                FieldRow("Name", name, { if (it.length <= 60) name = it }, fallback, nameFocus,
+                FieldRow(stringResource(R.string.remote_name), name, { if (it.length <= 60) name = it }, fallback, nameFocus,
                     fieldKeyboard(KeyboardType.Text, ImeAction.Done, KeyboardCapitalization.Words), onIme = { focus.clearFocus() })
             }
             Spacer(Modifier.height(24.dp))
-            Caption("Mark")
+            Caption(stringResource(R.string.remote_mark))
             Group {
                 SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 14.dp)) {
-                    listOf("Icon", "Emoji").forEachIndexed { index, label ->
+                    listOf(stringResource(R.string.remote_icon), stringResource(R.string.remote_emoji)).forEachIndexed { index, label ->
                         SegmentedButton(selected = emojiMode == (index == 1), onClick = { focus.clearFocus(); emojiMode = index == 1 },
                             shape = SegmentedButtonDefaults.itemShape(index, 2), icon = {},
                             colors = SegmentedButtonDefaults.colors(activeContainerColor = MaterialTheme.colorScheme.primaryContainer,
@@ -252,9 +254,10 @@ private fun IdentityEditor(fallback: String, phone: Boolean, initial: ServerIden
                     val choices = if (emojiMode) listOf("🏠", "☁️", "🌍", "🚀", "🌱", "🦊", "🐙", "🌙", "⚡", "🛰️", "🏔️", "💌").map { "emoji:$it" } else listOf("default", "cloud", "home", "globe", "storage", "shield")
                     choices.forEach { option ->
                         val active = mark == option
+                        val description = if (option.startsWith("emoji:")) option.removePrefix("emoji:") else markDescription(option)
                         val shape = RoundedCornerShape(15.dp)
                         Box(Modifier.size(48.dp).clip(shape).border(2.dp, if (active) MaterialTheme.colorScheme.primary else Color.Transparent, shape)
-                            .semantics { contentDescription = if (option.startsWith("emoji:")) option.removePrefix("emoji:") else "$option icon" }
+                            .semantics { contentDescription = description }
                             .selectable(active, role = Role.RadioButton, onClick = { mark = option; if (emojiMode) custom = option.removePrefix("emoji:"); focus.clearFocus() }),
                             contentAlignment = Alignment.Center) {
                             ServerMark(option, phone, size = 38.dp)
@@ -263,20 +266,30 @@ private fun IdentityEditor(fallback: String, phone: Boolean, initial: ServerIden
                 }
                 if (emojiMode) {
                     RowDivider(16.dp)
-                    if (!customVisible) ActionRow("Other emoji", { customVisible = true }, icon = Icons.Rounded.Add)
-                    else FieldRow("Emoji", custom, { value ->
+                    if (!customVisible) ActionRow(stringResource(R.string.remote_other_emoji), { customVisible = true }, icon = Icons.Rounded.Add)
+                    else FieldRow(stringResource(R.string.remote_emoji), custom, { value ->
                         if (value.length <= 32 && !value.contains('\n')) {
                             custom = value
                             val first = firstSymbol(value.trim())
                             if (first.isNotBlank()) mark = "emoji:$first"
                         }
-                    }, "Any emoji", emojiFocus, fieldKeyboard(KeyboardType.Text, ImeAction.Done), onIme = { focus.clearFocus() })
+                    }, stringResource(R.string.remote_any_emoji), emojiFocus, fieldKeyboard(KeyboardType.Text, ImeAction.Done), onIme = { focus.clearFocus() })
                 }
             }
-            if (emojiMode && customVisible) Footer("Only the first emoji is used.")
+            if (emojiMode && customVisible) Footer(stringResource(R.string.remote_first_emoji_only))
         }
     }
 }
+
+@Composable
+private fun markDescription(option: String): String = stringResource(when (option) {
+    "cloud" -> R.string.remote_icon_cloud
+    "home" -> R.string.remote_icon_home
+    "globe" -> R.string.remote_icon_globe
+    "storage" -> R.string.remote_icon_storage
+    "shield" -> R.string.remote_icon_shield
+    else -> R.string.remote_icon_default
+})
 
 private fun firstSymbol(value: String): String {
     if (value.isEmpty()) return ""

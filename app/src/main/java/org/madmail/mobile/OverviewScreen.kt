@@ -28,6 +28,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -64,33 +65,33 @@ internal fun StatisticsScreen(remote: RemoteServer?, onHome: () -> Unit) {
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(24.dp)) {
         // With nothing to read, say why once instead of leaving a page of dashes unexplained.
         if (overview == null) Group {
-            InfoRow(Tint.Gray, Icons.Rounded.QueryStats, if (running) "Waiting for numbers" else "No live numbers",
+            InfoRow(Tint.Gray, Icons.Rounded.QueryStats, if (running) stringResource(R.string.screen_waiting_numbers) else stringResource(R.string.screen_no_live_numbers),
                 when {
-                    running -> "They appear in a moment."
-                    phone -> "Turn on hosting on Home to see live numbers."
-                    else -> "Connect to the server on Home to see live numbers."
+                    running -> stringResource(R.string.screen_numbers_soon)
+                    phone -> stringResource(R.string.screen_turn_on_hosting)
+                    else -> stringResource(R.string.screen_connect_live)
                 })
-            if (!running) { RowDivider(64.dp); ActionRow("Go to Home", onHome, icon = Icons.Rounded.Home) }
+            if (!running) { RowDivider(64.dp); ActionRow(stringResource(R.string.screen_go_home), onHome, icon = Icons.Rounded.Home) }
         }
-        Section("Activity", if (overview == null) "Unavailable" else "Live") {
-            Stat(Tint.Orange, Icons.Rounded.People, "Accounts", metric("users", "registered"))
-            Stat(Tint.Pink, Icons.Rounded.Schedule, "Uptime", metric("uptime", "duration"))
-            Stat(Tint.Purple, Icons.Rounded.QrCode2, "Invite tokens", metric("tokens", "total"))
-            Stat(Tint.Teal, Icons.Rounded.SyncAlt, "IMAP connections", metric("imap", "connections"), last = true)
+        Section(stringResource(R.string.screen_activity), if (overview == null) stringResource(R.string.screen_unavailable) else stringResource(R.string.screen_live), live = overview != null) {
+            Stat(Tint.Orange, Icons.Rounded.People, stringResource(R.string.screen_accounts), metric("users", "registered"))
+            Stat(Tint.Pink, Icons.Rounded.Schedule, stringResource(R.string.screen_uptime), metric("uptime", "duration"))
+            Stat(Tint.Purple, Icons.Rounded.QrCode2, stringResource(R.string.screen_invite_tokens), metric("tokens", "total"))
+            Stat(Tint.Teal, Icons.Rounded.SyncAlt, stringResource(R.string.screen_imap_connections), metric("imap", "connections"), last = true)
         }
-        Section("Messages") {
-            Stat(Tint.Blue, Icons.AutoMirrored.Rounded.CallMade, "Sent", metric("sent_messages"))
-            Stat(Tint.Blue, Icons.Rounded.Outbox, "Outbound", metric("outbound_messages"))
-            Stat(Tint.Blue, Icons.AutoMirrored.Rounded.CallReceived, "Received", metric("received_messages"), last = true)
+        Section(stringResource(R.string.screen_messages)) {
+            Stat(Tint.Blue, Icons.AutoMirrored.Rounded.CallMade, stringResource(R.string.screen_sent), metric("sent_messages"))
+            Stat(Tint.Blue, Icons.Rounded.Outbox, stringResource(R.string.screen_outbound), metric("outbound_messages"))
+            Stat(Tint.Blue, Icons.AutoMirrored.Rounded.CallReceived, stringResource(R.string.screen_received), metric("received_messages"), last = true)
         }
-        Section(if (phone) "Device storage" else "Server storage") {
+        Section(if (phone) stringResource(R.string.screen_device_storage) else stringResource(R.string.screen_server_storage)) {
             val disk = if (phone) remember(overview) { StatFs(context.filesDir.absolutePath) } else null
             val serverDisk = overview?.optJSONObject("disk")
             val total = disk?.totalBytes ?: serverDisk?.takeIf { it.has("total_bytes") }?.optLong("total_bytes")
             val available = disk?.availableBytes ?: serverDisk?.takeIf { it.has("available_bytes") }?.optLong("available_bytes")
             val used = if (disk != null) disk.totalBytes - disk.availableBytes else serverDisk?.takeIf { it.has("used_bytes") }?.optLong("used_bytes")
             val meter = total != null && total > 0 && used != null
-            Stat(Tint.Yellow, Icons.Rounded.PieChart, "Used", used?.let { Formatter.formatFileSize(context, it) } ?: "—", last = meter)
+            Stat(Tint.Yellow, Icons.Rounded.PieChart, stringResource(R.string.screen_used), used?.let { Formatter.formatFileSize(context, it) } ?: "—", last = meter)
             if (total != null && total > 0 && used != null) {
                 val fraction = (used.toFloat() / total).coerceIn(0f, 1f)
                 LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth().padding(start = StatInset, end = 16.dp, bottom = 12.dp).height(6.dp).clip(CircleShape),
@@ -98,28 +99,28 @@ internal fun StatisticsScreen(remote: RemoteServer?, onHome: () -> Unit) {
                     strokeCap = StrokeCap.Round, gapSize = 0.dp, drawStopIndicator = {})
                 RowDivider(StatInset)
             }
-            Stat(Tint.Yellow, Icons.Rounded.DataUsage, "Available", available?.let { Formatter.formatFileSize(context, it) } ?: "—")
-            Stat(Tint.Yellow, Icons.Rounded.Storage, "Capacity", total?.let { Formatter.formatFileSize(context, it) } ?: "—", last = true)
+            Stat(Tint.Yellow, Icons.Rounded.DataUsage, stringResource(R.string.screen_available), available?.let { Formatter.formatFileSize(context, it) } ?: "—")
+            Stat(Tint.Yellow, Icons.Rounded.Storage, stringResource(R.string.screen_capacity), total?.let { Formatter.formatFileSize(context, it) } ?: "—", last = true)
         }
-        Section("Federation") {
-            Stat(Tint.Indigo, Icons.Rounded.Hub, "Connected peers", metric("email_servers", "connections"))
-            Stat(Tint.Indigo, Icons.Rounded.Language, "Domain peers", metric("email_servers", "domain_servers"))
-            Stat(Tint.Indigo, Icons.Rounded.Dns, "IP peers", metric("email_servers", "ip_servers"))
-            Stat(Tint.Indigo, Icons.AutoMirrored.Rounded.CallReceived, "Inbound", metric("federation_traffic", "inbound"))
-            Stat(Tint.Indigo, Icons.AutoMirrored.Rounded.CallMade, "Outbound", metric("federation_traffic", "outbound"))
-            Stat(Tint.Pink, Icons.Rounded.HourglassEmpty, "Queued", metric("federation_traffic", "queued"))
-            Stat(Tint.Orange, Icons.Rounded.TimerOff, "Expired", metric("federation_traffic", "expired"))
-            Stat(Tint.Pink, Icons.Rounded.Speed, "Latency", metric("federation_traffic", "mean_latency_ms").let { if (it == "—") it else "$it ms" })
-            Stat(Tint.Green, Icons.Rounded.CheckCircle, "Healthy", metric("federation_traffic", "health", "perfect"))
-            Stat(Tint.Indigo, Icons.Rounded.Share, "Federated", metric("federation_traffic", "health", "federated"))
-            Stat(Tint.Red, Icons.Rounded.ErrorOutline, "Unhealthy", metric("federation_traffic", "health", "bad"), last = true)
+        Section(stringResource(R.string.screen_federation)) {
+            Stat(Tint.Indigo, Icons.Rounded.Hub, stringResource(R.string.screen_connected_peers), metric("email_servers", "connections"))
+            Stat(Tint.Indigo, Icons.Rounded.Language, stringResource(R.string.screen_domain_peers), metric("email_servers", "domain_servers"))
+            Stat(Tint.Indigo, Icons.Rounded.Dns, stringResource(R.string.screen_ip_peers), metric("email_servers", "ip_servers"))
+            Stat(Tint.Indigo, Icons.AutoMirrored.Rounded.CallReceived, stringResource(R.string.screen_inbound), metric("federation_traffic", "inbound"))
+            Stat(Tint.Indigo, Icons.AutoMirrored.Rounded.CallMade, stringResource(R.string.screen_outbound), metric("federation_traffic", "outbound"))
+            Stat(Tint.Pink, Icons.Rounded.HourglassEmpty, stringResource(R.string.screen_queued), metric("federation_traffic", "queued"))
+            Stat(Tint.Orange, Icons.Rounded.TimerOff, stringResource(R.string.screen_status_expired), metric("federation_traffic", "expired"))
+            Stat(Tint.Pink, Icons.Rounded.Speed, stringResource(R.string.screen_latency), metric("federation_traffic", "mean_latency_ms").let { if (it == "—") it else stringResource(R.string.screen_latency_ms, it) })
+            Stat(Tint.Green, Icons.Rounded.CheckCircle, stringResource(R.string.screen_healthy), metric("federation_traffic", "health", "perfect"))
+            Stat(Tint.Indigo, Icons.Rounded.Share, stringResource(R.string.screen_federated), metric("federation_traffic", "health", "federated"))
+            Stat(Tint.Red, Icons.Rounded.ErrorOutline, stringResource(R.string.screen_unhealthy), metric("federation_traffic", "health", "bad"), last = true)
         }
-        Section("Services") {
-            Stat(Tint.Green, Icons.Rounded.Call, "TURN relays", metric("turn", "relays"))
-            Stat(Tint.Graphite, Icons.Rounded.VpnLock, "Proxy connections", metric("shadowsocks", "connections"))
-            Stat(Tint.Graphite, Icons.Rounded.Public, "Proxy IPs", metric("shadowsocks", "unique_ips"))
-            Stat(Tint.Green, Icons.Rounded.Notifications, "Push sent", metric("push", "successful_notifications"))
-            Stat(Tint.Yellow, Icons.Rounded.History, "Retention", metric("message_retention", "retention"), last = true)
+        Section(stringResource(R.string.screen_services)) {
+            Stat(Tint.Green, Icons.Rounded.Call, stringResource(R.string.screen_turn_relays), metric("turn", "relays"))
+            Stat(Tint.Graphite, Icons.Rounded.VpnLock, stringResource(R.string.screen_proxy_connections), metric("shadowsocks", "connections"))
+            Stat(Tint.Graphite, Icons.Rounded.Public, stringResource(R.string.screen_proxy_ips), metric("shadowsocks", "unique_ips"))
+            Stat(Tint.Green, Icons.Rounded.Notifications, stringResource(R.string.screen_push_sent), metric("push", "successful_notifications"))
+            Stat(Tint.Yellow, Icons.Rounded.History, stringResource(R.string.screen_retention), metric("message_retention", "retention"), last = true)
         }
     }
 }
@@ -160,31 +161,31 @@ internal fun OverviewScreen(name: String, identity: ServerIdentity, remote: Remo
         val place = when {
             !phone -> if (name.equals(remote!!.host, ignoreCase = true)) via else "$via · ${remote!!.host}"
             shared != null -> "${shared.network.label} · ${shared.host}"
-            networks == null -> "On this phone"
-            else -> "No network"
+            networks == null -> stringResource(R.string.screen_on_this_phone)
+            else -> stringResource(R.string.screen_no_network)
         }
-        val where = if (phone && name != "This phone") "This phone · $place" else place
+        val where = if (phone && name != "This phone") stringResource(R.string.screen_this_phone_place, place) else place
         ServerHeader(name, identity.mark, phone, power, unreachable = phone && networks?.isEmpty() == true, where)
 
         if (phone) EngineControls() else RemoteControls(remote!!)
 
         connection()
 
-        Section("Connection") {
-            Stat(Tint.Gray, Icons.Rounded.Inventory2, "Version", version ?: metric("version"), copyable = true)
+        Section(stringResource(R.string.screen_connection)) {
+            Stat(Tint.Gray, Icons.Rounded.Inventory2, stringResource(R.string.screen_version), version ?: metric("version"), copyable = true)
             if (phone) {
-                Stat(Tint.Teal, Icons.Rounded.Upload, if (running) "SMTP TLS port" else "Preferred SMTP port", if (running) "11465" else ports.smtp.toString(), copyable = true)
-                Stat(Tint.Teal, Icons.Rounded.Download, if (running) "IMAP TLS port" else "Preferred IMAP port", if (running) "11993" else ports.imap.toString(), copyable = true)
-                if (running) Stat(Tint.Teal, Icons.Rounded.Lock, "HTTPS port", "18443", copyable = true)
-                Stat(Tint.Graphite, Icons.Rounded.Shield, if (running) "Access" else "Preferred access", if (running || !standardPorts) "No root" else "Root")
+                Stat(Tint.Teal, Icons.Rounded.Upload, if (running) stringResource(R.string.screen_smtp_tls_port) else stringResource(R.string.screen_pref_smtp_port), if (running) "11465" else ports.smtp.toString(), copyable = true)
+                Stat(Tint.Teal, Icons.Rounded.Download, if (running) stringResource(R.string.screen_imap_tls_port) else stringResource(R.string.screen_pref_imap_port), if (running) "11993" else ports.imap.toString(), copyable = true)
+                if (running) Stat(Tint.Teal, Icons.Rounded.Lock, stringResource(R.string.screen_https_port), "18443", copyable = true)
+                Stat(Tint.Graphite, Icons.Rounded.Shield, if (running) stringResource(R.string.screen_access) else stringResource(R.string.screen_pref_access), if (running || !standardPorts) stringResource(R.string.screen_no_root) else stringResource(R.string.screen_root))
             } else if (remoteState?.transport == "API") {
-                Stat(Tint.Teal, Icons.Rounded.Api, "Admin API", remoteState.apiEndpoint ?: "Not configured", copyable = true)
+                Stat(Tint.Teal, Icons.Rounded.Api, "Admin API", remoteState.apiEndpoint ?: stringResource(R.string.screen_not_configured), copyable = true)
             } else {
-                Stat(Tint.Blue, Icons.Rounded.Dns, "Host", remote!!.host, copyable = true)
-                Stat(Tint.Orange, Icons.Rounded.Person, "User", remote.user, copyable = true)
-                Stat(Tint.Graphite, Icons.Rounded.Terminal, "SSH port", remote.port.toString(), copyable = true)
+                Stat(Tint.Blue, Icons.Rounded.Dns, stringResource(R.string.screen_host), remote!!.host, copyable = true)
+                Stat(Tint.Orange, Icons.Rounded.Person, stringResource(R.string.screen_user), remote.user, copyable = true)
+                Stat(Tint.Graphite, Icons.Rounded.Terminal, stringResource(R.string.screen_ssh_port), remote.port.toString(), copyable = true)
             }
-            NavRow({ TintIcon(Tint.Gray, Icons.Rounded.Tune, size = StatMark) }, "Connection settings", onClick = onSettings)
+            NavRow({ TintIcon(Tint.Gray, Icons.Rounded.Tune, size = StatMark) }, stringResource(R.string.screen_connection_settings), onClick = onSettings)
         }
     }
 }
@@ -196,14 +197,14 @@ private val StatInset = 58.dp
 
 /** Caption, then the section's rows in a group. A live state rides on the caption's right edge. */
 @Composable
-private fun Section(title: String, state: String? = null, content: @Composable ColumnScope.() -> Unit) {
+private fun Section(title: String, state: String? = null, live: Boolean = false, content: @Composable ColumnScope.() -> Unit) {
     Column(Modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
             Caption(title, Modifier.weight(1f))
             state?.let {
                 Row(Modifier.padding(end = 16.dp, bottom = 8.dp).semantics(mergeDescendants = true) {}, verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    if (it == "Live") Icon(Icons.Rounded.CheckCircle, null, Modifier.size(14.dp), tint = Success)
+                    if (live) Icon(Icons.Rounded.CheckCircle, null, Modifier.size(14.dp), tint = Success)
                     Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
@@ -234,8 +235,8 @@ private fun ServerHeader(name: String, mark: String, phone: Boolean, power: Powe
         else -> colors.outline
     }
     val state = when (power) {
-        PowerPhase.On -> if (unreachable) "Live, not reachable" else "Live"
-        PowerPhase.Starting -> "Starting"; PowerPhase.Stopping -> "Stopping"; PowerPhase.Failed -> "Failed"; PowerPhase.Off -> "Off"
+        PowerPhase.On -> if (unreachable) stringResource(R.string.screen_live_unreachable) else stringResource(R.string.screen_live)
+        PowerPhase.Starting -> stringResource(R.string.screen_power_starting); PowerPhase.Stopping -> stringResource(R.string.screen_power_stopping); PowerPhase.Failed -> stringResource(R.string.screen_power_failed); PowerPhase.Off -> stringResource(R.string.screen_power_off)
     }
     Column(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         ServerMark(mark, phone, size = 84.dp)

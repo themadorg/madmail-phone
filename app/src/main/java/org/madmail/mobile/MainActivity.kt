@@ -1,5 +1,6 @@
 package org.madmail.mobile
 
+import androidx.compose.ui.res.stringResource
 import android.content.Context
 import android.os.Bundle
 import androidx.activity.enableEdgeToEdge
@@ -58,9 +59,9 @@ internal fun PhoneHostingSettings(serverId: String) {
     var rootPorts by remember { mutableStateOf(prefs.getBoolean("root_ports", false)) }
     val mode = if (rootPorts) PortMode.RootStandard else PortMode.Unprivileged
     Column {
-        Caption("Connection ports")
+        Caption(stringResource(R.string.common_ports_caption))
         Group {
-            SwitchRow(Tint.Teal, Icons.Rounded.SettingsEthernet, "Standard ports", "Needs root", rootPorts) {
+            SwitchRow(Tint.Teal, Icons.Rounded.SettingsEthernet, stringResource(R.string.common_ports_standard), stringResource(R.string.common_ports_needs_root), rootPorts) {
                 rootPorts = it; prefs.edit().putBoolean("root_ports", it).apply()
             }
             RowDivider(64.dp)
@@ -68,10 +69,10 @@ internal fun PhoneHostingSettings(serverId: String) {
             RowDivider(16.dp)
             ValueRow("IMAP TLS", mode.imap.toString())
         }
-        if (rootPorts) Footer("Saved. Root support isn’t available yet.")
+        if (rootPorts) Footer(stringResource(R.string.common_ports_root_saved))
         Spacer(Modifier.height(24.dp))
-        Caption("Data")
-        Group { InfoRow(Tint.Yellow, Icons.Rounded.Storage, "Stays on this phone", "Private app storage") }
-        Footer("Uninstalling deletes it. No backup yet.")
+        Caption(stringResource(R.string.common_data_caption))
+        Group { InfoRow(Tint.Yellow, Icons.Rounded.Storage, stringResource(R.string.common_data_on_phone), stringResource(R.string.common_data_private_storage)) }
+        Footer(stringResource(R.string.common_data_footer))
     }
 }

@@ -25,6 +25,7 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -52,14 +53,14 @@ internal fun RemoteControls(server: RemoteServer) {
     // The engine only reports busy, so the switch remembers which way it was flipped until the operation ends.
     var pending by remember(server.id) { mutableStateOf<PowerPhase?>(null) }
     val power = pending ?: when { running -> PowerPhase.On; state.error != null -> PowerPhase.Failed; else -> PowerPhase.Off }
-    val transport = if (state.transport == "API") "Admin API · ${state.apiEndpoint ?: server.host}" else "SSH · ${server.address}"
+    val transport = if (state.transport == "API") stringResource(R.string.remote_transport_api, state.apiEndpoint ?: server.host) else "SSH · ${server.address}"
     Column {
         Group(Modifier.animateContentSize(tween(300, easing = Emphasized))) {
             if (state.connected && state.managed && state.version != null) {
-                PowerRow(power, when (power) { PowerPhase.Starting -> "Starting…"; PowerPhase.Stopping -> "Stopping…"; else -> state.status }, transport,
+                PowerRow(power, when (power) { PowerPhase.Starting -> stringResource(R.string.remote_starting); PowerPhase.Stopping -> stringResource(R.string.remote_stopping); else -> state.status }, transport,
                     PowerConfirm(
-                        PowerQuestion("Start this server?", "Madmail starts on ${server.host}.", "Start"),
-                        PowerQuestion("Stop this server?", "People on ${server.host} can’t send or receive mail until you start it again.", "Stop")),
+                        PowerQuestion(stringResource(R.string.remote_start_title), stringResource(R.string.remote_start_body, server.host), stringResource(R.string.remote_start)),
+                        PowerQuestion(stringResource(R.string.remote_stop_title), stringResource(R.string.remote_stop_body, server.host), stringResource(R.string.remote_stop))),
                     working = state.busy) { on ->
                     pending = if (on) PowerPhase.Starting else PowerPhase.Stopping
                     scope.launch {
@@ -74,16 +75,16 @@ internal fun RemoteControls(server: RemoteServer) {
                 }
             }
             FlowRow(Modifier.fillMaxWidth().padding(start = 64.dp, end = 14.dp, bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (!state.connected) PillButton("Connect", onClick = { connect = true }, icon = Icons.Rounded.Terminal, filled = true, enabled = !state.busy)
+                if (!state.connected) PillButton(stringResource(R.string.remote_connect), onClick = { connect = true }, icon = Icons.Rounded.Terminal, filled = true, enabled = !state.busy)
                 else {
-                    if (state.managed) PillButton(if (state.version == null) "Install Madmail" else "Versions", onClick = { versions = true },
+                    if (state.managed) PillButton(if (state.version == null) stringResource(R.string.remote_install_madmail) else stringResource(R.string.remote_versions), onClick = { versions = true },
                         icon = Icons.Rounded.Inventory2, filled = state.version == null, enabled = !state.busy)
-                    PillButton("Refresh", onClick = { scope.launch(Dispatchers.IO) { engine.refresh() } }, icon = Icons.Rounded.Refresh, enabled = !state.busy)
+                    PillButton(stringResource(R.string.remote_refresh), onClick = { scope.launch(Dispatchers.IO) { engine.refresh() } }, icon = Icons.Rounded.Refresh, enabled = !state.busy)
                 }
             }
             if (state.connected) {
                 RowDivider(16.dp)
-                ActionRow("Disconnect", { scope.launch(Dispatchers.IO) { engine.disconnect() } }, enabled = !state.busy)
+                ActionRow(stringResource(R.string.remote_disconnect), { scope.launch(Dispatchers.IO) { engine.disconnect() } }, enabled = !state.busy)
             }
         }
         state.error?.let { Footer(it, MaterialTheme.colorScheme.error) }
@@ -100,41 +101,41 @@ internal fun RemoteControls(server: RemoteServer) {
             finally { loading = false }
         }
         KitSheet(onDismiss = { versions = false }) {
-            SheetHeader("Madmail versions", server.host)
+            SheetHeader(stringResource(R.string.remote_versions_title), server.host)
             Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()).padding(horizontal = GroupGutter).padding(bottom = 24.dp)
                 .animateContentSize(tween(300, easing = Emphasized))) {
-                Group { ValueRow("Current", state.version ?: "Not installed") }
+                Group { ValueRow(stringResource(R.string.remote_current), state.version ?: stringResource(R.string.remote_not_installed)) }
                 if (state.installedVersions.isNotEmpty()) {
                     Spacer(Modifier.height(20.dp))
-                    Caption("Installed")
+                    Caption(stringResource(R.string.remote_installed))
                     Group {
                         state.installedVersions.forEachIndexed { index, version ->
                             if (index > 0) RowDivider(64.dp)
                             val current = version == state.version
-                            InfoRow(if (current) Tint.Green else Tint.Gray, if (current) Icons.Rounded.CheckCircle else Icons.Rounded.Inventory2, version, if (current) "Selected" else null) {
-                                if (!current) PillButton("Remove", onClick = { versions = false; scope.launch(Dispatchers.IO) { engine.removeVersion(version) } })
+                            InfoRow(if (current) Tint.Green else Tint.Gray, if (current) Icons.Rounded.CheckCircle else Icons.Rounded.Inventory2, version, if (current) stringResource(R.string.remote_selected) else null) {
+                                if (!current) PillButton(stringResource(R.string.remote_remove), onClick = { versions = false; scope.launch(Dispatchers.IO) { engine.removeVersion(version) } })
                             }
                         }
                     }
                 }
                 Spacer(Modifier.height(20.dp))
-                Caption("Available")
+                Caption(stringResource(R.string.remote_available))
                 if (loading) RemoteProgress()
                 if (releases.isNotEmpty()) Group {
                     releases.forEachIndexed { index, release ->
                         if (index > 0) RowDivider(64.dp)
-                        NavRow({ TintIcon(Tint.Gray, Icons.Rounded.Download) }, release.version, "${release.bytes / 1024 / 1024} MB",
+                        NavRow({ TintIcon(Tint.Gray, Icons.Rounded.Download) }, release.version, stringResource(R.string.remote_size_mb, release.bytes / 1024 / 1024),
                             enabled = state.version == null || compareVersions(release.version, state.version!!) >= 0) { selected = release }
                     }
                 }
-                Footer("Older versions can’t read newer data. Restore a matching backup first.")
+                Footer(stringResource(R.string.remote_versions_footer))
                 error?.let { Footer(it, MaterialTheme.colorScheme.error) }
             }
         }
         selected?.let { release ->
-            KitDialog("${if (state.version == null) "Install" else "Update to"} Madmail ${release.version}?",
-                "${server.address}\n\nRuns as its own service with a self-signed certificate. Updates pause hosting and back up first. Other installs aren’t touched.",
-                "${if (state.version == null) "Install" else "Update"} & start", onDismiss = { selected = null },
+            KitDialog(if (state.version == null) stringResource(R.string.remote_install_title, release.version) else stringResource(R.string.remote_update_title, release.version),
+                stringResource(R.string.remote_install_body, server.address),
+                if (state.version == null) stringResource(R.string.remote_install_start) else stringResource(R.string.remote_update_start), onDismiss = { selected = null },
                 onConfirm = { selected = null; versions = false; scope.launch(Dispatchers.IO) { engine.install(release) } })
         }
     }

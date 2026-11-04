@@ -23,6 +23,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.*
 import org.madmail.mobile.core.*
@@ -48,26 +49,26 @@ internal fun GuestAddressSheet(origin: String, remote: RemoteServer?, onDismiss:
         loading = true; readError = null
         try { addresses = withContext(Dispatchers.IO) { if (remote == null) GuestNetworks.phone(context) else if (apiOnly) emptyList() else RemoteEngine.get(context, remote).guestAddresses() } }
         catch (e: CancellationException) { throw e }
-        catch (_: Exception) { readError = "Couldn’t read server addresses. Reconnect, or enter one below." }
+        catch (_: Exception) { readError = context.getString(R.string.remote_error_read_addresses) }
         finally { loading = false }
     }
-    fun choose(value: String) { draft = value; checks = null; feedback = "Save to update the QR." }
+    fun choose(value: String) { draft = value; checks = null; feedback = context.getString(R.string.remote_save_to_update_qr) }
     val server = remote?.let { RemoteEngine.get(context, it).guestOrigin ?: GuestAddresses.origin(it.host) }
     KitSheet(onDismiss = onDismiss) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-            Box(Modifier.weight(1f)) { SheetHeader("Guest address", "Pick one guests can reach.",
+            Box(Modifier.weight(1f)) { SheetHeader(stringResource(R.string.remote_guest_address), stringResource(R.string.remote_guest_pick),
                 mark = { TintIcon(Tint.Teal, Icons.Rounded.Link, size = 40.dp) }) }
             IconButton(onClick = { feedback = null; refresh++ }, enabled = !loading, modifier = Modifier.padding(top = 4.dp, end = 12.dp)) {
-                Icon(Icons.Rounded.Refresh, "Refresh network addresses", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Icon(Icons.Rounded.Refresh, stringResource(R.string.remote_refresh_addresses), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = GroupGutter).padding(bottom = 32.dp)
             .animateContentSize(tween(300, easing = Emphasized))) {
-            Caption(if (remote == null) "Networks on this phone" else "Server addresses")
+            Caption(if (remote == null) stringResource(R.string.remote_networks_phone) else stringResource(R.string.remote_server_addresses))
             if (loading) LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 12.dp).clip(RoundedCornerShape(2.dp)), strokeCap = StrokeCap.Round)
             if (server != null || addresses.isNotEmpty()) Group {
                 server?.let { value ->
-                    AddressRow(Tint.Blue, Icons.Rounded.Dns, "Server address", value, draft == value) { choose(value) }
+                    AddressRow(Tint.Blue, Icons.Rounded.Dns, stringResource(R.string.remote_server_address), value, draft == value) { choose(value) }
                 }
                 addresses.forEachIndexed { index, address ->
                     if (index > 0 || server != null) RowDivider(64.dp)
@@ -81,18 +82,18 @@ internal fun GuestAddressSheet(origin: String, remote: RemoteServer?, onDismiss:
                     AddressRow(tint, icon, address.network.label, "${address.host} · ${address.device}", draft == address.origin) { choose(address.origin) }
                 }
             }
-            if (!loading && addresses.isEmpty()) Footer(if (remote == null) "No network found. Connect and refresh, or enter an address." else "None found. Enter a public name or Tailscale address.")
+            if (!loading && addresses.isEmpty()) Footer(if (remote == null) stringResource(R.string.remote_no_network) else stringResource(R.string.remote_none_found))
             Spacer(Modifier.height(24.dp))
-            Caption("HTTPS address")
+            Caption(stringResource(R.string.remote_https_address))
             Group {
-                FieldRow("Address", draft, { draft = it; checks = null; feedback = null }, "https://mail.example.org:18443", field,
+                FieldRow(stringResource(R.string.remote_address), draft, { draft = it; checks = null; feedback = null }, "https://mail.example.org:18443", field,
                     fieldKeyboard(KeyboardType.Uri, ImeAction.Done), { focus.clearFocus() })
             }
-            Footer(if (remote == null) "One of this phone’s IPs. New accounts use it as their domain." else "The server’s address and HTTPS port.")
+            Footer(if (remote == null) stringResource(R.string.remote_phone_ip_footer) else stringResource(R.string.remote_server_port_footer))
             feedback?.let { Footer(it) }
             readError?.let { Footer(it, MaterialTheme.colorScheme.error) }
             Spacer(Modifier.height(24.dp))
-            PillButton(if (checking) "Checking ports…" else "Check ports", onClick = {
+            PillButton(if (checking) stringResource(R.string.remote_checking_ports) else stringResource(R.string.remote_check_ports), onClick = {
                 val target = draft
                 checking = true; checks = null
                 scope.launch {
@@ -102,18 +103,18 @@ internal fun GuestAddressSheet(origin: String, remote: RemoteServer?, onDismiss:
             }, icon = Icons.Rounded.NetworkCheck, enabled = !checking && InviteLinks.origin(draft) != null, wide = true)
             checks?.let { results ->
                 Spacer(Modifier.height(16.dp))
-                Caption("Reachability")
+                Caption(stringResource(R.string.remote_reachability))
                 Group {
                     results.forEachIndexed { index, (port, reachable) ->
                         if (index > 0) RowDivider(64.dp)
-                        InfoRow(if (reachable) Tint.Green else Tint.Red, if (reachable) Icons.Rounded.Check else Icons.Rounded.Close, "Port $port",
-                            if (reachable) "Reachable" else "Not reachable")
+                        InfoRow(if (reachable) Tint.Green else Tint.Red, if (reachable) Icons.Rounded.Check else Icons.Rounded.Close, stringResource(R.string.remote_port, port),
+                            if (reachable) stringResource(R.string.remote_reachable) else stringResource(R.string.remote_not_reachable))
                     }
                 }
-                Footer("From this phone only. A VPN exit node can block LAN access.")
+                Footer(stringResource(R.string.remote_ports_footer))
             }
             Spacer(Modifier.height(28.dp))
-            BrandButton("Save address", enabled = usable(draft, remote == null)) { onSave(checkNotNull(InviteLinks.origin(draft))) }
+            BrandButton(stringResource(R.string.remote_save_address), enabled = usable(draft, remote == null)) { onSave(checkNotNull(InviteLinks.origin(draft))) }
         }
     }
 }

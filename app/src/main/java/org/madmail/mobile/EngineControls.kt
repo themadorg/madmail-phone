@@ -1,5 +1,7 @@
 package org.madmail.mobile
 
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import android.Manifest
 import android.content.Intent
 import android.os.Build
@@ -68,7 +70,7 @@ internal fun EngineControls() {
                 else if (Build.VERSION.SDK_INT >= 33) permission.launch(Manifest.permission.POST_NOTIFICATIONS) else start()
             }
             RowDivider(64.dp)
-            NavRow({ TintIcon(Tint.Gray, Icons.Rounded.Inventory2) }, "Versions", value = state.version ?: engine.selected?.version) { versions = true }
+            NavRow({ TintIcon(Tint.Gray, Icons.Rounded.Inventory2) }, stringResource(R.string.common_engine_versions), value = state.version ?: engine.selected?.version) { versions = true }
             RowDivider(64.dp)
             BackgroundHostingAccess(access)
         }
@@ -92,6 +94,7 @@ internal fun rememberBackgroundAccess(): BackgroundAccess {
     val power = remember { context.getSystemService(PowerManager::class.java) }
     var allowed by remember { mutableStateOf(power.isIgnoringBatteryOptimizations(context.packageName)) }
     var error by remember { mutableStateOf<String?>(null) }
+    val settingsHint = stringResource(R.string.common_background_error)
     val owner = LocalLifecycleOwner.current
     val request = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         allowed = power.isIgnoringBatteryOptimizations(context.packageName)
@@ -107,7 +110,7 @@ internal fun rememberBackgroundAccess(): BackgroundAccess {
         error = null
         val intent = if (allowed) Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
             else Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${context.packageName}"))
-        runCatching { request.launch(intent) }.onFailure { error = "Allow it in Settings → Apps → Madmail → Battery." }
+        runCatching { request.launch(intent) }.onFailure { error = settingsHint }
     }
 }
 
@@ -120,14 +123,14 @@ internal fun BackgroundHostingAccess(access: BackgroundAccess = rememberBackgrou
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
         TintIcon(if (access.allowed) Tint.Green else Tint.Orange, if (access.allowed) Icons.Rounded.BatteryFull else Icons.Rounded.BatteryAlert)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(if (access.allowed) "Background access" else "Allow background hosting", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Text(if (access.allowed) "Works with the screen off." else "Works with the screen off. Uses more battery.",
+            Text(if (access.allowed) stringResource(R.string.common_background_access) else stringResource(R.string.common_background_allow_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text(if (access.allowed) stringResource(R.string.common_background_works) else stringResource(R.string.common_background_works_battery),
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (access.allowed) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             Icon(Icons.Rounded.CheckCircle, null, Modifier.size(16.dp), tint = Success)
-            Text("Allowed", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        } else PillButton("Allow", onClick = access.request)
+            Text(stringResource(R.string.common_background_allowed), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        } else PillButton(stringResource(R.string.common_background_allow), onClick = access.request)
     }
 }
 
@@ -171,8 +174,8 @@ private fun EngineVersionsSheet(onDismiss: () -> Unit) {
     val downloading by rememberUpdatedState(busy)
     KitSheet(onDismiss = { if (!busy) onDismiss() },
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true, confirmValueChange = { it != SheetValue.Hidden || !downloading })) {
-        SheetHeader("Madmail versions", "themadorg/madmail", trailing = {
-            IconButton(onClick = { refresh++ }, enabled = !loading && !busy) { Icon(Icons.Rounded.Refresh, "Check for new versions") }
+        SheetHeader(stringResource(R.string.common_engine_versions_title), "themadorg/madmail", trailing = {
+            IconButton(onClick = { refresh++ }, enabled = !loading && !busy) { Icon(Icons.Rounded.Refresh, stringResource(R.string.common_engine_refresh)) }
         })
         Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()).padding(horizontal = GroupGutter).padding(bottom = 24.dp)
             .animateContentSize(tween(300, easing = Emphasized))) {
@@ -188,42 +191,42 @@ private fun EngineVersionsSheet(onDismiss: () -> Unit) {
                     val androidPackage = release?.androidPackage
                     if (index > 0) RowDivider(64.dp)
                     InfoRow(if (selected == version) Tint.Green else Tint.Gray, if (selected == version) Icons.Rounded.CheckCircle else Icons.Rounded.Inventory2, version, when {
-                        selected == version -> "In use"
-                        installed != null -> "Installed"
-                        androidPackage != null -> "Available"
-                        else -> "Unavailable"
+                        selected == version -> stringResource(R.string.common_engine_in_use)
+                        installed != null -> stringResource(R.string.common_engine_installed)
+                        androidPackage != null -> stringResource(R.string.common_engine_available)
+                        else -> stringResource(R.string.common_engine_unavailable)
                     }) {
-                        if (installed != null && selected != version) PillButton("Select", onClick = {
+                        if (installed != null && selected != version) PillButton(stringResource(R.string.common_engine_select), onClick = {
                             scope.launch {
                                 runCatching { withContext(Dispatchers.IO) { engine.select(installed) } }
                                     .onSuccess { selected = version }.onFailure { error = it.message }
                             }
                         }, enabled = canInstall)
-                        else if (installed == null && androidPackage != null) PillButton("Download", onClick = { download(androidPackage.url) }, enabled = !busy)
+                        else if (installed == null && androidPackage != null) PillButton(stringResource(R.string.common_engine_download), onClick = { download(androidPackage.url) }, enabled = !busy)
                     }
                 }
             }
             loadError?.let { Footer(it, MaterialTheme.colorScheme.error) }
-            if (!loading && loadError == null && releases.isEmpty()) Footer("No releases found.")
-            if (!loading && hidden > 0) Footer("$hidden older ${if (hidden == 1) "release has" else "releases have"} no Android build.")
-            if (busy) { Spacer(Modifier.height(12.dp)); EngineProgress(); Footer("Downloading…") }
+            if (!loading && loadError == null && releases.isEmpty()) Footer(stringResource(R.string.common_engine_no_releases))
+            if (!loading && hidden > 0) Footer(pluralStringResource(R.plurals.common_engine_hidden_releases, hidden, hidden))
+            if (busy) { Spacer(Modifier.height(12.dp)); EngineProgress(); Footer(stringResource(R.string.common_engine_downloading)) }
             stagedVersion?.let { staged ->
                 Spacer(Modifier.height(16.dp))
-                PillButton("Install $staged", onClick = { runCatching { updates.install() }.onFailure { error = it.message } }, filled = true, wide = true, enabled = canInstall)
+                PillButton(stringResource(R.string.common_engine_install, staged), onClick = { runCatching { updates.install() }.onFailure { error = it.message } }, filled = true, wide = true, enabled = canInstall)
             }
             error?.let { Footer(it, MaterialTheme.colorScheme.error) }
             Spacer(Modifier.height(20.dp))
             Group {
-                ActionRow(if (showPackageLink) "Hide link" else "Install from link", { showPackageLink = !showPackageLink }, enabled = !busy, icon = Icons.Rounded.Link)
+                ActionRow(if (showPackageLink) stringResource(R.string.common_engine_hide_link) else stringResource(R.string.common_engine_install_from_link), { showPackageLink = !showPackageLink }, enabled = !busy, icon = Icons.Rounded.Link)
                 if (showPackageLink) {
                     RowDivider(16.dp)
-                    FieldRow("URL", updateUrl, { if (!busy) updateUrl = it }, "https://…", packageField, fieldKeyboard(KeyboardType.Uri, ImeAction.Done),
+                    FieldRow(stringResource(R.string.common_engine_url), updateUrl, { if (!busy) updateUrl = it }, "https://…", packageField, fieldKeyboard(KeyboardType.Uri, ImeAction.Done),
                         { if (!busy && updateUrl.startsWith("https://")) download(updateUrl) })
                     RowDivider(16.dp)
-                    ActionRow("Download", { download(updateUrl) }, enabled = !busy && updateUrl.startsWith("https://"), icon = Icons.Rounded.Download)
+                    ActionRow(stringResource(R.string.common_engine_download), { download(updateUrl) }, enabled = !busy && updateUrl.startsWith("https://"), icon = Icons.Rounded.Download)
                 }
             }
-            if (showPackageLink) Footer("Signed update URL.")
+            if (showPackageLink) Footer(stringResource(R.string.common_engine_signed_url))
         }
     }
 }

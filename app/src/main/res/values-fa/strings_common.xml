@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- App lock -->
+    <string name="common_applock_title_unlock">باز کردن قفل Madmail</string>
+    <string name="common_applock_title_enable">فعال‌سازی قفل برنامه</string>
+    <string name="common_applock_title_disable">خاموش کردن قفل برنامه</string>
+    <string name="common_applock_subtitle">اثر انگشت یا قفل صفحه</string>
+    <string name="common_applock_confirm">قفل صفحه را تأیید کنید</string>
+    <string name="common_applock_error_save">ذخیرهٔ قفل برنامه ممکن نشد. دوباره تلاش کنید.</string>
+    <string name="common_applock_error_failed">قفل باز نشد. دوباره تلاش کنید.</string>
+    <string name="common_applock_error_no_screen_lock">در تنظیمات یک قفل صفحه تنظیم کنید و دوباره تلاش کنید.</string>
+    <string name="common_applock_error_open">باز کردن قفل ممکن نشد. دوباره تلاش کنید.</string>
+    <string name="common_applock_locked_title">Madmail قفل است</string>
+    <string name="common_applock_locked_body">میزبانی همچنان فعال است.</string>
+    <string name="common_applock_waiting">در انتظار…</string>
+    <string name="common_applock_unlock">باز کردن قفل</string>
+    <string name="common_applock_setting">قفل برنامه</string>
+    <string name="common_applock_lock_now">قفل کردن</string>
+    <string name="common_applock_footer">هنگام خروج از برنامه قفل می‌شود. میزبانی همچنان فعال است.</string>
+
+    <!-- Phone hosting settings -->
+    <string name="common_ports_caption">درگاه‌های اتصال</string>
+    <string name="common_ports_standard">درگاه‌های استاندارد</string>
+    <string name="common_ports_needs_root">نیاز به روت</string>
+    <string name="common_ports_root_saved">ذخیره شد. پشتیبانی از روت هنوز در دسترس نیست.</string>
+    <string name="common_data_caption">داده‌ها</string>
+    <string name="common_data_on_phone">روی همین گوشی می‌ماند</string>
+    <string name="common_data_private_storage">حافظهٔ خصوصی برنامه</string>
+    <string name="common_data_footer">با حذف برنامه پاک می‌شود. هنوز پشتیبان‌گیری وجود ندارد.</string>
+
+    <!-- Network notice -->
+    <string name="common_network_none">بدون شبکه</string>
+    <string name="common_network_none_detail">مهمان‌ها نمی‌توانند به این گوشی دسترسی پیدا کنند. به Wi-Fi وصل شوید، داده همراه یا هات‌اسپات را روشن کنید یا یک VPN وصل کنید.</string>
+    <string name="common_network_wifi_settings">تنظیمات Wi-Fi</string>
+    <string name="common_network_hotspot_settings">تنظیمات هات‌اسپات</string>
+
+    <!-- Hosting status -->
+    <string name="common_hosting_live">میزبانی فعال است</string>
+    <string name="common_hosting_starting">در حال شروع…</string>
+    <string name="common_hosting_stopping">در حال توقف…</string>
+    <string name="common_hosting_failed">میزبانی ناموفق بود</string>
+    <string name="common_hosting_off">میزبانی خاموش است</string>
+    <string name="common_hosting_detail_unreachable">شبکه‌ای در دسترس نیست، پس مهمان‌ها نمی‌توانند به آن دسترسی پیدا کنند.</string>
+    <string name="common_hosting_detail_ready">آماده برای اتصال.</string>
+    <string name="common_hosting_detail_error">خطا را در پایین ببینید.</string>
+    <string name="common_hosting_detail_choose_version">در پایین یک نسخه انتخاب کنید.</string>
+    <string name="common_hosting_on_title">میزبانی روشن شود؟</string>
+    <string name="common_hosting_on_text">این گوشی شروع به ارائهٔ ایمیل می‌کند. آن را شارژ و آنلاین نگه دارید.</string>
+    <string name="common_hosting_on_action">روشن کردن</string>
+    <string name="common_hosting_off_title">میزبانی خاموش شود؟</string>
+    <string name="common_hosting_off_text">تا وقتی دوباره روشن نکنید، افراد روی این گوشی نمی‌توانند ایمیل بفرستند یا دریافت کنند.</string>
+    <string name="common_hosting_off_action">خاموش کردن</string>
+    <string name="common_power_on">روشن</string>
+    <string name="common_power_starting">در حال شروع</string>
+    <string name="common_power_stopping">در حال توقف</string>
+    <string name="common_power_off">خاموش</string>
+
+    <!-- Engine versions and background access -->
+    <string name="common_engine_versions">نسخه‌ها</string>
+    <string name="common_engine_versions_title">نسخه‌های Madmail</string>
+    <string name="common_engine_refresh">بررسی نسخه‌های جدید</string>
+    <string name="common_engine_in_use">در حال استفاده</string>
+    <string name="common_engine_installed">نصب‌شده</string>
+    <string name="common_engine_available">در دسترس</string>
+    <string name="common_engine_unavailable">در دسترس نیست</string>
+    <string name="common_engine_select">انتخاب</string>
+    <string name="common_engine_download">دریافت</string>
+    <string name="common_engine_no_releases">نسخه‌ای پیدا نشد.</string>
+    <plurals name="common_engine_hidden_releases">
+        <item quantity="one">%1$d نسخهٔ قدیمی‌تر ساخت اندروید ندارد.</item>
+        <item quantity="other">%1$d نسخهٔ قدیمی‌تر ساخت اندروید ندارند.</item>
+    </plurals>
+    <string name="common_engine_downloading">در حال دریافت…</string>
+    <string name="common_engine_install">نصب %1$s</string>
+    <string name="common_engine_hide_link">پنهان کردن پیوند</string>
+    <string name="common_engine_install_from_link">نصب از طریق پیوند</string>
+    <string name="common_engine_url">URL</string>
+    <string name="common_engine_signed_url">نشانی URL به‌روزرسانی امضاشده.</string>
+    <string name="common_background_access">دسترسی در پس‌زمینه</string>
+    <string name="common_background_allow_title">مجاز کردن میزبانی در پس‌زمینه</string>
+    <string name="common_background_works">با صفحهٔ خاموش هم کار می‌کند.</string>
+    <string name="common_background_works_battery">با صفحهٔ خاموش هم کار می‌کند. باتری بیشتری مصرف می‌کند.</string>
+    <string name="common_background_allowed">مجاز</string>
+    <string name="common_background_allow">مجاز کردن</string>
+    <string name="common_background_error">آن را در تنظیمات ← برنامه‌ها ← Madmail ← باتری مجاز کنید.</string>
+
+    <!-- App shell -->
+    <string name="common_this_phone">این گوشی</string>
+    <string name="common_statistics">آمار</string>
+    <string name="common_invite">دعوت</string>
+    <string name="common_connect_another_device">اتصال دستگاه دیگر</string>
+    <string name="common_error_save_key">ذخیرهٔ کلید ممکن نشد. دوباره تلاش کنید.</string>
+    <string name="common_server_removed">سرور حذف شد.</string>
+    <string name="common_tab_home">خانه</string>
+    <string name="common_tab_stats">آمار</string>
+    <string name="common_tab_settings">تنظیمات</string>
+    <string name="common_switch_server">تغییر سرور</string>
+    <string name="common_dock_status_live">فعال</string>
+    <string name="common_dock_status_starting">در حال شروع</string>
+    <string name="common_dock_status_stopping">در حال توقف</string>
+    <string name="common_dock_status_failed">ناموفق</string>
+    <string name="common_dock_status_off">خاموش</string>
+    <string name="common_dock_server_description">%1$s، %2$s</string>
+
+    <!-- Design kit -->
+    <string name="common_copy_label">کپی %1$s</string>
+    <string name="common_copied">کپی شد</string>
+    <string name="common_drag_handle">دستگیرهٔ کشیدن</string>
+    <string name="common_cancel">لغو</string>
+</resources>

@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import androidx.activity.compose.BackHandler
+import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
@@ -37,6 +38,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -46,23 +48,23 @@ import org.madmail.mobile.core.*
 import org.madmail.mobile.engine.*
 import java.text.NumberFormat
 
-private data class SettingsPage(val id: String, val title: String, val subtitle: String, val tint: Tint, val icon: ImageVector)
+private data class SettingsPage(val id: String, @StringRes val title: Int, @StringRes val subtitle: Int, val tint: Tint, val icon: ImageVector)
 private val settingsPages = listOf(
-    SettingsPage("registration", "Registration", "Sign-ups and invitations", Tint.Purple, Icons.Rounded.PersonAdd),
-    SettingsPage("accounts", "Accounts", "Members and quotas", Tint.Orange, Icons.Rounded.Group),
-    SettingsPage("storage", "Mail & storage", "Size and retention", Tint.Yellow, Icons.Rounded.Inventory2),
-    SettingsPage("network", "Network & ports", "Ports and hostname", Tint.Teal, Icons.Rounded.SettingsEthernet),
-    SettingsPage("services", "Calls & services", "Relays and push", Tint.Green, Icons.Rounded.Call),
-    SettingsPage("federation", "Federation", "Policy and signing", Tint.Indigo, Icons.Rounded.Public),
-    SettingsPage("proxies", "Proxies", "Shadowsocks and HTTP", Tint.Graphite, Icons.Rounded.VpnLock),
-    SettingsPage("administration", "Administration", "Dashboard and restart", Tint.Gray, Icons.Rounded.AdminPanelSettings),
-    SettingsPage("connection", "Connection", "Connection details", Tint.Teal, Icons.Rounded.Link),
+    SettingsPage("registration", R.string.screen_page_registration, R.string.screen_page_registration_sub, Tint.Purple, Icons.Rounded.PersonAdd),
+    SettingsPage("accounts", R.string.screen_accounts, R.string.screen_page_accounts_sub, Tint.Orange, Icons.Rounded.Group),
+    SettingsPage("storage", R.string.screen_page_storage, R.string.screen_page_storage_sub, Tint.Yellow, Icons.Rounded.Inventory2),
+    SettingsPage("network", R.string.screen_page_network, R.string.screen_page_network_sub, Tint.Teal, Icons.Rounded.SettingsEthernet),
+    SettingsPage("services", R.string.screen_page_services, R.string.screen_page_services_sub, Tint.Green, Icons.Rounded.Call),
+    SettingsPage("federation", R.string.screen_federation, R.string.screen_page_federation_sub, Tint.Indigo, Icons.Rounded.Public),
+    SettingsPage("proxies", R.string.screen_page_proxies, R.string.screen_page_proxies_sub, Tint.Graphite, Icons.Rounded.VpnLock),
+    SettingsPage("administration", R.string.screen_page_administration, R.string.screen_page_administration_sub, Tint.Gray, Icons.Rounded.AdminPanelSettings),
+    SettingsPage("connection", R.string.screen_connection, R.string.screen_page_connection_sub, Tint.Teal, Icons.Rounded.Link),
 )
 /** Root list sections: caption to page ids. */
 private val settingsSections = listOf(
-    "Server" to listOf("registration", "accounts", "storage"),
-    "Delivery" to listOf("network", "services", "federation"),
-    "Advanced" to listOf("proxies", "administration", "connection"),
+    R.string.screen_section_server to listOf("registration", "accounts", "storage"),
+    R.string.screen_section_delivery to listOf("network", "services", "federation"),
+    R.string.screen_section_advanced to listOf("proxies", "administration", "connection"),
 )
 
 @Composable
@@ -97,12 +99,12 @@ internal fun ServerSettingsScreen(serverId: String, serverName: String, remote: 
         controller.state.collect { current -> if (current.message != seen) { seen = current.message; current.message?.let { toaster.show(it) } } }
     }
     LaunchedEffect(page, ready) { if (ready && page in listOf("accounts", "federation")) controller.loadDetails(page) }
-    val title = settingsPages.find { it.id == page }?.title ?: if (page == "account") "Account" else "Settings"
+    val title = settingsPages.find { it.id == page }?.let { stringResource(it.title) } ?: if (page == "account") stringResource(R.string.screen_account) else stringResource(R.string.screen_settings)
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(24.dp)) {
         Column {
             AnimatedVisibility(page != "root", enter = fadeIn(tween(220, easing = Emphasized)) + expandVertically(tween(300, easing = Emphasized)),
                 exit = fadeOut(tween(120)) + shrinkVertically(tween(260, easing = Emphasized))) {
-                IconButton(onClick = { back() }, Modifier.offset(x = (-8).dp)) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back to settings") }
+                IconButton(onClick = { back() }, Modifier.offset(x = (-8).dp)) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.screen_back_to_settings)) }
             }
             PageTitle(title, serverName) {
                 IconButton(onClick = { if (!state.busy) { controller.refresh(); if (page in listOf("accounts", "federation")) controller.loadDetails(page) } }, enabled = ready,
@@ -115,13 +117,13 @@ internal fun ServerSettingsScreen(serverId: String, serverName: String, remote: 
         val notices = !ready || state.error != null || state.restartRequired
         if (notices) Column(Modifier.animateContentSize(tween(300, easing = Emphasized)), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (!ready) Group {
-                InfoRow(Tint.Gray, Icons.Rounded.PowerSettingsNew, if (remote == null) "Hosting is off" else "Not connected",
-                    if (remote == null) "Start hosting on Home." else "Connect on Home.")
+                InfoRow(Tint.Gray, Icons.Rounded.PowerSettingsNew, if (remote == null) stringResource(R.string.screen_hosting_off) else stringResource(R.string.screen_not_connected),
+                    if (remote == null) stringResource(R.string.screen_start_hosting_on_home) else stringResource(R.string.screen_connect_on_home))
             }
-            state.error?.let { Group { InfoRow(Tint.Red, Icons.Rounded.ErrorOutline, "Something went wrong", it) } }
+            state.error?.let { Group { InfoRow(Tint.Red, Icons.Rounded.ErrorOutline, stringResource(R.string.screen_something_wrong), it) } }
             if (state.restartRequired) Group {
-                InfoRow(Tint.Orange, Icons.Rounded.RestartAlt, "Restart needed") {
-                    PillButton("Restart", onClick = { restart = true }, enabled = canRestart)
+                InfoRow(Tint.Orange, Icons.Rounded.RestartAlt, stringResource(R.string.screen_restart_needed)) {
+                    PillButton(stringResource(R.string.screen_restart), onClick = { restart = true }, enabled = canRestart)
                 }
             }
         }
@@ -132,15 +134,15 @@ internal fun ServerSettingsScreen(serverId: String, serverName: String, remote: 
                 when (displayedPage) {
                     "root" -> {
                         settingsSections.forEach { (caption, ids) ->
-                            Section(caption) {
+                            Section(stringResource(caption)) {
                                 settingsPages.filter { it.id in ids }.forEachIndexed { index, item ->
                                     if (index > 0) RowDivider(64.dp)
-                                    NavRow({ TintIcon(item.tint, item.icon) }, item.title, item.subtitle) { navigate(item.id) }
+                                    NavRow({ TintIcon(item.tint, item.icon) }, stringResource(item.title), stringResource(item.subtitle)) { navigate(item.id) }
                                 }
                             }
                         }
                         Column {
-                            Caption("On this phone")
+                            Caption(stringResource(R.string.screen_on_this_phone))
                             AppLockSettings()
                         }
                     }
@@ -148,24 +150,24 @@ internal fun ServerSettingsScreen(serverId: String, serverName: String, remote: 
                         if (remote != null) {
                             if (remoteState?.transport == "API") Section("Admin API") {
                                 val endpoint = remoteState.apiEndpoint
-                                ValueRow("Address", endpoint ?: "Not configured", copyable = endpoint != null, mark = { TintIcon(Tint.Teal, Icons.Rounded.Api) })
+                                ValueRow(stringResource(R.string.screen_address), endpoint ?: stringResource(R.string.screen_not_configured), copyable = endpoint != null, mark = { TintIcon(Tint.Teal, Icons.Rounded.Api) })
                             } else Section("SSH") {
-                                ValueRow("Host", remote.host, copyable = true, mark = { TintIcon(Tint.Blue, Icons.Rounded.Dns) })
+                                ValueRow(stringResource(R.string.screen_host), remote.host, copyable = true, mark = { TintIcon(Tint.Blue, Icons.Rounded.Dns) })
                                 RowDivider(64.dp)
-                                ValueRow("Username", remote.user, copyable = true, mark = { TintIcon(Tint.Orange, Icons.Rounded.Person) })
+                                ValueRow(stringResource(R.string.screen_username), remote.user, copyable = true, mark = { TintIcon(Tint.Orange, Icons.Rounded.Person) })
                                 RowDivider(64.dp)
-                                ValueRow("Port", remote.port.toString(), copyable = true, mark = { TintIcon(Tint.Teal, Icons.Rounded.SettingsEthernet) })
+                                ValueRow(stringResource(R.string.screen_port), remote.port.toString(), copyable = true, mark = { TintIcon(Tint.Teal, Icons.Rounded.SettingsEthernet) })
                                 RemoteEngine.get(context, remote).fingerprint?.let {
                                     RowDivider(64.dp)
-                                    ValueRow("Fingerprint", it, copyable = true, mark = { TintIcon(Tint.Graphite, Icons.Rounded.Fingerprint) })
+                                    ValueRow(stringResource(R.string.screen_fingerprint), it, copyable = true, mark = { TintIcon(Tint.Graphite, Icons.Rounded.Fingerprint) })
                                 }
                             }
                             RemoteControls(remote)
                             Section {
-                                ActionRow("Remove saved server", { remove = true }, destructive = true, icon = Icons.Rounded.DeleteOutline)
+                                ActionRow(stringResource(R.string.screen_remove_saved_server), { remove = true }, destructive = true, icon = Icons.Rounded.DeleteOutline)
                             }
                         } else {
-                            Section("Hosting ports") {
+                            Section(stringResource(R.string.screen_hosting_ports)) {
                                 ValueRow("SMTP TLS", "11465", copyable = true, mark = { TintIcon(Tint.Teal, Icons.Rounded.Upload) })
                                 RowDivider(64.dp)
                                 ValueRow("IMAP TLS", "11993", copyable = true, mark = { TintIcon(Tint.Teal, Icons.Rounded.Download) })
@@ -175,10 +177,10 @@ internal fun ServerSettingsScreen(serverId: String, serverName: String, remote: 
                             val prefs = remember { context.getSharedPreferences("server-settings-phone", Context.MODE_PRIVATE) }
                             var root by remember { mutableStateOf(prefs.getBoolean("root_ports", false)) }
                             if (root) Group {
-                                InfoRow(Tint.Red, Icons.Rounded.ErrorOutline, "Standard ports unavailable",
-                                    "Standard ports need root. Use default ports to start hosting.")
+                                InfoRow(Tint.Red, Icons.Rounded.ErrorOutline, stringResource(R.string.screen_std_ports_unavailable),
+                                    stringResource(R.string.screen_std_ports_need_root))
                                 RowDivider(16.dp)
-                                ActionRow("Use default ports", { prefs.edit().putBoolean("root_ports", false).apply(); root = false })
+                                ActionRow(stringResource(R.string.screen_use_default_ports), { prefs.edit().putBoolean("root_ports", false).apply(); root = false })
                             }
                         }
                     }
@@ -186,21 +188,21 @@ internal fun ServerSettingsScreen(serverId: String, serverName: String, remote: 
                         val quota = state.quota
                         val rows = state.accounts?.optJSONArray("accounts")
                         if (ready && rows != null) {
-                            Section("Defaults") {
-                                NavRow({ TintIcon(Tint.Yellow, Icons.Rounded.DataUsage) }, "Default storage quota",
-                                    value = quota?.optLong("default_quota_bytes")?.let { ByteSize.format(it) } ?: "Not loaded", enabled = enabled) {
+                            Section(stringResource(R.string.screen_defaults)) {
+                                NavRow({ TintIcon(Tint.Yellow, Icons.Rounded.DataUsage) }, stringResource(R.string.screen_default_storage_quota),
+                                    value = quota?.optLong("default_quota_bytes")?.let { ByteSize.format(it) } ?: stringResource(R.string.screen_not_loaded), enabled = enabled) {
                                     quotaTarget = ""; quotaInitial = quota?.optLong("default_quota_bytes") ?: 0L
                                 }
                             }
-                            if (rows.length() == 0) Group { InfoRow(Tint.Orange, Icons.Rounded.Group, "No accounts yet", "Create one from Invite.") }
-                            else Section("${NumberFormat.getIntegerInstance().format(rows.length())} ${if (rows.length() == 1) "account" else "accounts"}",
-                                footer = "Older madmail.local accounts still work."
+                            if (rows.length() == 0) Group { InfoRow(Tint.Orange, Icons.Rounded.Group, stringResource(R.string.screen_no_accounts_yet), stringResource(R.string.screen_create_one_invite)) }
+                            else Section(context.resources.getQuantityString(R.plurals.screen_accounts_count, rows.length(), NumberFormat.getIntegerInstance().format(rows.length())),
+                                footer = stringResource(R.string.screen_legacy_accounts)
                                     .takeIf { (0 until rows.length()).any { rows.getJSONObject(it).optString("username").endsWith("@madmail.local", ignoreCase = true) } }) {
                                 for (i in 0 until rows.length()) {
                                     val row = rows.getJSONObject(i)
                                     if (i > 0) RowDivider(64.dp)
                                     NavRow({ TintIcon(Tint.Orange, Icons.Rounded.Person) }, row.getString("username"),
-                                        "${ByteSize.format(row.optLong("used_bytes"))} used · ${ByteSize.format(row.optLong("max_bytes"))} quota") {
+                                        stringResource(R.string.screen_used_quota, ByteSize.format(row.optLong("used_bytes")), ByteSize.format(row.optLong("max_bytes")))) {
                                         account = row; navigate("account")
                                     }
                                 }
@@ -210,23 +212,23 @@ internal fun ServerSettingsScreen(serverId: String, serverName: String, remote: 
                     "account" -> account?.let { row ->
                         val username = row.getString("username")
                         val updated = state.accounts?.optJSONArray("accounts")?.let { array -> (0 until array.length()).map { array.getJSONObject(it) }.find { it.optString("username") == username } } ?: row
-                        Section("Account") {
-                            ValueRow("Address", username, copyable = true, mark = { TintIcon(Tint.Blue, Icons.Rounded.AlternateEmail) })
+                        Section(stringResource(R.string.screen_account)) {
+                            ValueRow(stringResource(R.string.screen_address), username, copyable = true, mark = { TintIcon(Tint.Blue, Icons.Rounded.AlternateEmail) })
                             RowDivider(64.dp)
-                            ValueRow("Storage used", ByteSize.format(updated.optLong("used_bytes")), mark = { TintIcon(Tint.Yellow, Icons.Rounded.Storage) })
+                            ValueRow(stringResource(R.string.screen_storage_used), ByteSize.format(updated.optLong("used_bytes")), mark = { TintIcon(Tint.Yellow, Icons.Rounded.Storage) })
                             RowDivider(64.dp)
-                            NavRow({ TintIcon(Tint.Yellow, Icons.Rounded.DataUsage) }, "Storage quota", value = ByteSize.format(updated.optLong("max_bytes")), enabled = enabled) {
+                            NavRow({ TintIcon(Tint.Yellow, Icons.Rounded.DataUsage) }, stringResource(R.string.screen_storage_quota), value = ByteSize.format(updated.optLong("max_bytes")), enabled = enabled) {
                                 quotaTarget = username; quotaInitial = updated.optLong("max_bytes")
                             }
                         }
                         Section {
-                            ActionRow("Delete account", { deleteAccount = true }, destructive = true, enabled = enabled, icon = Icons.Rounded.DeleteOutline)
+                            ActionRow(stringResource(R.string.screen_delete_account), { deleteAccount = true }, destructive = true, enabled = enabled, icon = Icons.Rounded.DeleteOutline)
                         }
                     }
                     else -> {
                         val footer = when (displayedPage) {
-                            "registration" -> "Manage invitations in Invite."
-                            "network" -> "App-managed ports are read-only."
+                            "registration" -> stringResource(R.string.screen_footer_manage_invites)
+                            "network" -> stringResource(R.string.screen_footer_ports_readonly)
                             else -> null
                         }
                         Section(footer = footer) {
@@ -235,35 +237,36 @@ internal fun ServerSettingsScreen(serverId: String, serverName: String, remote: 
                                 val current = if (raw is JSONObject) raw.optString("value") else raw?.toString()
                                 val checked = when (current) { "enabled", "open", "true" -> true; "disabled", "closed", "false" -> false; else -> null }
                                 val display = when {
-                                    current == null -> if (ready && state.values != null) "Not reported" else "Not loaded"
-                                    current.isEmpty() -> "Hosting default"
+                                    current == null -> if (ready && state.values != null) stringResource(R.string.screen_not_reported) else stringResource(R.string.screen_not_loaded)
+                                    current.isEmpty() -> stringResource(R.string.screen_hosting_default)
                                     setting.kind == SettingKind.Secret -> "••••••••"
                                     setting.kind == SettingKind.PositiveNumber -> current.toLongOrNull()?.let { NumberFormat.getIntegerInstance().format(it) } ?: current
                                     else -> setting.display(current)
                                 }
                                 val (tint, icon) = settingMark(setting)
+                                val copiedMessage = stringResource(R.string.screen_setting_copied, setting.title)
                                 if (index > 0) RowDivider(64.dp)
                                 if (setting.kind == SettingKind.Toggle) {
                                     if (checked != null) SwitchRow(tint, icon, setting.title, setting.hint.ifBlank { null }, checked, enabled) { controller.save(setting, it.toString()) }
                                     else InfoRow(tint, icon, setting.title, listOf(setting.hint, display).filter { it.isNotBlank() }.joinToString("\n"))
                                 } else SettingRow(tint, icon, setting.title, display, clickable = enabled && current != null, editable = setting.kind != SettingKind.Managed,
-                                    copy = if (!current.isNullOrBlank() && setting.kind != SettingKind.Secret) ({ copySetting(context, toaster, setting.title, current) }) else null) { editing = setting }
+                                    copy = if (!current.isNullOrBlank() && setting.kind != SettingKind.Secret) ({ copySetting(context, toaster, setting.title, copiedMessage, current) }) else null) { editing = setting }
                             }
                         }
                         if (displayedPage == "federation" && ready) state.dkim?.let { dkim ->
-                            val rows = listOf(Triple("domain", "Domain", Tint.Indigo to Icons.Rounded.Public), Triple("selector", "Selector", Tint.Graphite to Icons.Rounded.Key),
-                                Triple("dns_name", "DNS record", Tint.Blue to Icons.Rounded.Dns), Triple("txt", "TXT value", Tint.Graphite to Icons.Rounded.VerifiedUser))
+                            val rows = listOf(Triple("domain", stringResource(R.string.screen_domain), Tint.Indigo to Icons.Rounded.Public), Triple("selector", stringResource(R.string.screen_selector), Tint.Graphite to Icons.Rounded.Key),
+                                Triple("dns_name", stringResource(R.string.screen_dns_record), Tint.Blue to Icons.Rounded.Dns), Triple("txt", stringResource(R.string.screen_txt_value), Tint.Graphite to Icons.Rounded.VerifiedUser))
                                 .mapNotNull { (key, label, mark) -> dkim.optString(key).takeUnless { it.isBlank() || it == "null" }?.let { Triple(label, it, mark) } }
-                            if (rows.isNotEmpty()) Section("Domain signing") {
+                            if (rows.isNotEmpty()) Section(stringResource(R.string.screen_domain_signing)) {
                                 rows.forEachIndexed { index, (label, value, mark) ->
                                     if (index > 0) RowDivider(64.dp)
                                     ValueRow(label, value, copyable = true, mark = { TintIcon(mark.first, mark.second) })
                                 }
                             }
                         }
-                        if (displayedPage == "administration") Section("Maintenance") {
-                            NavRow({ TintIcon(Tint.Gray, Icons.Rounded.RestartAlt) }, "Restart server",
-                                if (remote == null || remoteState?.managed == true) null else "Needs the app-managed service",
+                        if (displayedPage == "administration") Section(stringResource(R.string.screen_maintenance)) {
+                            NavRow({ TintIcon(Tint.Gray, Icons.Rounded.RestartAlt) }, stringResource(R.string.screen_restart_server),
+                                if (remote == null || remoteState?.managed == true) null else stringResource(R.string.screen_needs_managed_service),
                                 enabled = canRestart) { restart = true }
                         }
                     }
@@ -276,13 +279,13 @@ internal fun ServerSettingsScreen(serverId: String, serverName: String, remote: 
         val value = if (raw is JSONObject) raw.optString("value") else raw?.toString().orEmpty()
         SettingsEditor(setting, value, remote == null, onDismiss = { editing = null }, onSave = { next, reset -> controller.save(setting, next, reset); editing = null })
     }
-    if (restart) KitDialog("Restart $serverName?", "Connections drop briefly.", "Restart",
+    if (restart) KitDialog(stringResource(R.string.screen_restart_server_title, serverName), stringResource(R.string.screen_connections_drop), stringResource(R.string.screen_restart),
         onConfirm = { controller.restart(); restart = false }, onDismiss = { restart = false })
-    if (remove) KitDialog("Remove $serverName?", "Only the saved connection is removed.", "Remove",
+    if (remove) KitDialog(stringResource(R.string.screen_remove_server_title, serverName), stringResource(R.string.screen_remove_server_body), stringResource(R.string.screen_remove),
         onConfirm = { SettingsController.forget(serverId); onRemove() }, onDismiss = { remove = false })
-    if (deleteAccount && account != null) KitDialog("Delete account?", "Permanently deletes ${account!!.getString("username")} and its mail. The address can’t register again.", "Delete",
+    if (deleteAccount && account != null) KitDialog(stringResource(R.string.screen_delete_account_title), stringResource(R.string.screen_delete_account_body, account!!.getString("username")), stringResource(R.string.screen_delete),
         onConfirm = {
-            controller.mutate("/admin/accounts", "DELETE", JSONObject().put("username", account!!.getString("username")), success = "Account deleted.", refreshAccounts = true)
+            controller.mutate("/admin/accounts", "DELETE", JSONObject().put("username", account!!.getString("username")), success = context.getString(R.string.screen_account_deleted), refreshAccounts = true)
             deleteAccount = false; navigate("accounts")
         }, onDismiss = { deleteAccount = false })
     quotaTarget?.let { username ->
@@ -290,12 +293,12 @@ internal fun ServerSettingsScreen(serverId: String, serverName: String, remote: 
         val amount = draft.toLongOrNull()?.takeIf { it in 1..(Long.MAX_VALUE / (1024 * 1024)) }
         val focus = remember { FocusRequester() }
         fun save() {
-            controller.mutate("/admin/quota", "PUT", JSONObject().put("max_bytes", amount!! * 1024 * 1024).apply { if (username.isNotEmpty()) put("username", username) }, success = "Storage quota saved.", refreshAccounts = true)
+            controller.mutate("/admin/quota", "PUT", JSONObject().put("max_bytes", amount!! * 1024 * 1024).apply { if (username.isNotEmpty()) put("username", username) }, success = context.getString(R.string.screen_quota_saved), refreshAccounts = true)
             quotaTarget = null
         }
-        KitDialog(if (username.isEmpty()) "Default storage quota" else "Account quota", null, "Save", confirmEnabled = amount != null, onConfirm = ::save, onDismiss = { quotaTarget = null }) {
+        KitDialog(if (username.isEmpty()) stringResource(R.string.screen_default_storage_quota) else stringResource(R.string.screen_account_quota), null, stringResource(R.string.screen_save), confirmEnabled = amount != null, onConfirm = ::save, onDismiss = { quotaTarget = null }) {
             Group {
-                FieldRow("Storage", draft, { draft = it.filter(Char::isDigit) }, "512", focus, fieldKeyboard(KeyboardType.Number, ImeAction.Done), { if (amount != null) save() },
+                FieldRow(stringResource(R.string.screen_storage), draft, { draft = it.filter(Char::isDigit) }, "512", focus, fieldKeyboard(KeyboardType.Number, ImeAction.Done), { if (amount != null) save() },
                     trailing = { Text("MB", Modifier.padding(end = 12.dp), style = MaterialTheme.typography.bodyLarge, color = colors.onSurfaceVariant) })
             }
         }
@@ -324,7 +327,7 @@ private fun SettingRow(tint: Tint, icon: ImageVector, title: String, value: Stri
             Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Text(value, style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"), color = colors.onSurfaceVariant)
         }
-        copy?.let { IconButton(onClick = it) { Icon(Icons.Rounded.ContentCopy, "Copy $title", Modifier.size(18.dp), tint = colors.onSurfaceVariant.copy(alpha = 0.6f)) } }
+        copy?.let { IconButton(onClick = it) { Icon(Icons.Rounded.ContentCopy, stringResource(R.string.screen_copy_named, title), Modifier.size(18.dp), tint = colors.onSurfaceVariant.copy(alpha = 0.6f)) } }
         if (editable) Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, null, tint = colors.onSurfaceVariant.copy(alpha = 0.6f))
     }
 }
@@ -338,12 +341,12 @@ private fun RefreshGlyph(busy: Boolean) {
         // Finish the current turn instead of snapping back, then reset for the next one.
         else { turn.animateTo(ceil(turn.value / 360f) * 360f, tween(260, easing = Emphasized)); turn.snapTo(0f) }
     }
-    Icon(Icons.Rounded.Refresh, if (busy) "Refreshing" else "Refresh settings", Modifier.size(22.dp).graphicsLayer { rotationZ = turn.value })
+    Icon(Icons.Rounded.Refresh, if (busy) stringResource(R.string.screen_refreshing) else stringResource(R.string.screen_refresh_settings), Modifier.size(22.dp).graphicsLayer { rotationZ = turn.value })
 }
 
-private fun copySetting(context: Context, toaster: Toaster, title: String, value: String) {
+private fun copySetting(context: Context, toaster: Toaster, title: String, message: String, value: String) {
     (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText(title, value))
-    toaster.show("$title copied")
+    toaster.show(message)
 }
 
 /** Hue follows meaning across the app: ports teal, secrets graphite, sizes blue, time pink, otherwise the page's own hue. */
@@ -382,7 +385,7 @@ private fun SettingsEditor(setting: ServerSetting, current: String, phone: Boole
     val valid = setting.valid(draft, phone)
     val canSave = valid && (draft != current || setting.kind == SettingKind.Secret)
     val colors = MaterialTheme.colorScheme
-    KitDialog(setting.title, setting.hint.ifBlank { null }, "Save", confirmEnabled = canSave, onConfirm = { onSave(draft, false) }, onDismiss = onDismiss) {
+    KitDialog(setting.title, setting.hint.ifBlank { null }, stringResource(R.string.screen_save), confirmEnabled = canSave, onConfirm = { onSave(draft, false) }, onDismiss = onDismiss) {
         if (setting.kind == SettingKind.Choice) Group {
             setting.choices.forEachIndexed { index, choice ->
                 if (index > 0) RowDivider(16.dp)
@@ -393,21 +396,21 @@ private fun SettingsEditor(setting: ServerSetting, current: String, phone: Boole
                 }
             }
         } else {
-            val portHint = if (phone) "Port 1024–65535" else "Port 1–65535"
+            val portHint = if (phone) stringResource(R.string.screen_port_range, "1024", "65535") else stringResource(R.string.screen_port_range, "1", "65535")
             val keyboard = when (setting.kind) {
                 SettingKind.Port, SettingKind.PositiveNumber -> KeyboardType.Number
                 SettingKind.Secret -> KeyboardType.Password
                 else -> KeyboardType.Text
             }
-            val error = if (draft.isNotBlank() && !valid) (if (setting.kind == SettingKind.Port) portHint else "Not a valid value.") else null
+            val error = if (draft.isNotBlank() && !valid) (if (setting.kind == SettingKind.Port) portHint else stringResource(R.string.screen_invalid_value)) else null
             Group {
-                FieldRow(if (setting.kind == SettingKind.Secret) "New secret" else "Value", draft, { draft = it }, "", focus, fieldKeyboard(keyboard, ImeAction.Done),
+                FieldRow(if (setting.kind == SettingKind.Secret) stringResource(R.string.screen_new_secret) else stringResource(R.string.screen_value), draft, { draft = it }, "", focus, fieldKeyboard(keyboard, ImeAction.Done),
                     { if (canSave) onSave(draft, false) }, error = error, secret = setting.kind == SettingKind.Secret)
                 RowDivider(16.dp)
-                ActionRow("Use server default", { onSave("", true) })
+                ActionRow(stringResource(R.string.screen_use_server_default), { onSave("", true) })
             }
             if (setting.kind == SettingKind.Port && error == null) Footer(portHint)
         }
-        if (setting.restart) Footer("Needs a restart.", colors.onSurfaceVariant)
+        if (setting.restart) Footer(stringResource(R.string.screen_needs_restart), colors.onSurfaceVariant)
     }
 }

@@ -1,5 +1,6 @@
 package org.madmail.mobile
 
+import androidx.compose.ui.res.stringResource
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.CubicBezierEasing
@@ -261,10 +262,11 @@ internal fun ValueRow(label: String, value: String, copyable: Boolean = false, v
     // Long values (fingerprints, DNS records) and large font sizes put the value under the label, in full.
     val stack = stacked || value.length > 28 || LocalDensity.current.fontScale >= 1.3f
     val clipboard = LocalClipboardManager.current
+    val copyLabel = stringResource(R.string.common_copy_label, label)
     val haptics = LocalHapticFeedback.current
     var copied by remember { mutableStateOf(false) }
     LaunchedEffect(copied) { if (copied) { delay(1400); copied = false } }
-    Row(Modifier.fillMaxWidth().then(if (copyable) Modifier.clickable(onClickLabel = "Copy $label") {
+    Row(Modifier.fillMaxWidth().then(if (copyable) Modifier.clickable(onClickLabel = copyLabel) {
             clipboard.setText(AnnotatedString(value)); haptics.performHapticFeedback(HapticFeedbackType.Confirm); copied = true
         } else Modifier).heightIn(min = 52.dp).padding(start = if (mark != null) 14.dp else 16.dp, end = 16.dp, top = 10.dp, bottom = 10.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -278,7 +280,7 @@ internal fun ValueRow(label: String, value: String, copyable: Boolean = false, v
             Text(value, Modifier.widthIn(max = 200.dp), style = MaterialTheme.typography.bodyLarge, color = valueColor, textAlign = TextAlign.End,
                 maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
-        if (copyable) Icon(if (copied) Icons.Rounded.Check else Icons.Rounded.ContentCopy, if (copied) "Copied" else null, Modifier.size(16.dp),
+        if (copyable) Icon(if (copied) Icons.Rounded.Check else Icons.Rounded.ContentCopy, if (copied) stringResource(R.string.common_copied) else null, Modifier.size(16.dp),
             tint = if (copied) Success else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
     }
 }
@@ -378,8 +380,11 @@ internal fun KitSheet(onDismiss: () -> Unit, sheetState: SheetState = rememberMo
     // A full-height sheet stops below the status bar instead of running under the clock.
     ModalBottomSheet(onDismissRequest = onDismiss, modifier = Modifier.statusBarsPadding(), sheetState = sheetState, containerColor = panelColor(),
         shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
-        dragHandle = { Box(Modifier.padding(top = 10.dp, bottom = 6.dp).size(36.dp, 5.dp).clip(CircleShape).background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f))
-            .semantics { contentDescription = "Drag handle" }) }) {
+        dragHandle = {
+            val handle = stringResource(R.string.common_drag_handle)
+            Box(Modifier.padding(top = 10.dp, bottom = 6.dp).size(36.dp, 5.dp).clip(CircleShape).background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f))
+                .semantics { contentDescription = handle })
+        }) {
         // The sheet's window covers the app's, so it draws toasts itself while open.
         Box {
             Column(content = content)
@@ -452,7 +457,7 @@ internal fun KitDialog(title: String, text: String?, confirm: String, onConfirm:
             }
         },
         confirmButton = { PillButton(confirm, onConfirm, filled = true, enabled = confirmEnabled) },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } })
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.common_cancel)) } })
 }
 
 /**

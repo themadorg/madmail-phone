@@ -1,5 +1,6 @@
 package org.madmail.mobile
 
+import androidx.compose.ui.res.stringResource
 import android.app.Activity
 import android.app.KeyguardManager
 import android.content.Context
@@ -66,14 +67,14 @@ internal class AppLock(private val activity: MainActivity) {
             val change = action
             if (change != null) {
                 if (!prefs.edit().putBoolean("lock", change).commit()) {
-                    error = "Couldn’t save app lock. Try again."
+                    error = activity.getString(R.string.common_applock_error_save)
                     return
                 }
             }
             state = state.authenticated(success, present, change)
             protectWindow()
             error = null
-        } else if (error == null) error = "Not unlocked. Try again."
+        } else if (error == null) error = activity.getString(R.string.common_applock_error_failed)
         action = null
     }
 
@@ -83,18 +84,18 @@ internal class AppLock(private val activity: MainActivity) {
         error = null
         val keyguard = activity.getSystemService(KeyguardManager::class.java)
         if (!keyguard.isDeviceSecure) {
-            error = "Set a screen lock in Settings, then try again."
+            error = activity.getString(R.string.common_applock_error_no_screen_lock)
             return
         }
         action = change
         busy = true
-        val title = when (change) { true -> "Enable app lock"; false -> "Turn off app lock"; null -> "Unlock Madmail" }
+        val title = activity.getString(when (change) { true -> R.string.common_applock_title_enable; false -> R.string.common_applock_title_disable; null -> R.string.common_applock_title_unlock })
         runCatching {
             if (Build.VERSION.SDK_INT >= 30) {
                 val request = ++generation
                 val cancellation = CancellationSignal().also { signal = it }
                 BiometricPrompt.Builder(activity).setTitle(title)
-                    .setSubtitle("Fingerprint or screen lock")
+                    .setSubtitle(activity.getString(R.string.common_applock_subtitle))
                     .setAllowedAuthenticators(Authenticators.BIOMETRIC_STRONG or Authenticators.DEVICE_CREDENTIAL)
                     .build().authenticate(cancellation, activity.mainExecutor, object : BiometricPrompt.AuthenticationCallback() {
                         override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
@@ -105,11 +106,11 @@ internal class AppLock(private val activity: MainActivity) {
                         }
                     })
             } else {
-                val intent = keyguard.createConfirmDeviceCredentialIntent(title, "Confirm screen lock")
+                val intent = keyguard.createConfirmDeviceCredentialIntent(title, activity.getString(R.string.common_applock_confirm))
                     ?: error("Device screen lock is unavailable")
                 credential.launch(intent)
             }
-        }.onFailure { error = "Couldn’t open unlock. Try again."; finish(false) }
+        }.onFailure { error = activity.getString(R.string.common_applock_error_open); finish(false) }
     }
 }
 
@@ -123,17 +124,17 @@ internal fun AppLockScreen(lock: AppLock) {
                 horizontalAlignment = Alignment.CenterHorizontally) {
                 TintIcon(Tint.Graphite, Icons.Rounded.Lock, size = 56.dp)
                 Spacer(Modifier.height(24.dp))
-                Text("Madmail is locked", Modifier.semantics { heading() }, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold,
+                Text(stringResource(R.string.common_applock_locked_title), Modifier.semantics { heading() }, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold,
                     textAlign = TextAlign.Center)
                 Spacer(Modifier.height(10.dp))
-                Text("Hosting keeps running.", style = MaterialTheme.typography.bodyLarge,
+                Text(stringResource(R.string.common_applock_locked_body), style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
                 AnimatedVisibility(lock.error != null, enter = fadeIn(tween(240, easing = Emphasized)) + expandVertically(tween(300, easing = Emphasized)),
                     exit = fadeOut(tween(160)) + shrinkVertically(tween(240, easing = Emphasized))) {
                     Group(Modifier.padding(top = 24.dp)) { InfoRow(Tint.Red, Icons.Rounded.ErrorOutline, lock.error.orEmpty()) }
                 }
             }
-            BrandButton(if (lock.busy) "Waiting…" else "Unlock", enabled = !lock.busy) { lock.authenticate() }
+            BrandButton(if (lock.busy) stringResource(R.string.common_applock_waiting) else stringResource(R.string.common_applock_unlock), enabled = !lock.busy) { lock.authenticate() }
         }
     }
 }
@@ -143,13 +144,13 @@ internal fun AppLockSettings() {
     val lock = LocalAppLock.current
     Column(Modifier.animateContentSize(tween(300, easing = Emphasized))) {
         Group {
-            SwitchRow(Tint.Graphite, Icons.Rounded.Lock, "App lock", null, lock.enabled, enabled = !lock.busy) { lock.authenticate(it) }
+            SwitchRow(Tint.Graphite, Icons.Rounded.Lock, stringResource(R.string.common_applock_setting), null, lock.enabled, enabled = !lock.busy) { lock.authenticate(it) }
             if (lock.enabled) {
                 RowDivider(64.dp)
-                ActionRow("Lock now", { lock.lock() })
+                ActionRow(stringResource(R.string.common_applock_lock_now), { lock.lock() })
             }
         }
-        Footer("Locks when you leave. Hosting keeps running.")
+        Footer(stringResource(R.string.common_applock_footer))
         lock.error?.let { Footer(it, color = MaterialTheme.colorScheme.error) }
     }
 }

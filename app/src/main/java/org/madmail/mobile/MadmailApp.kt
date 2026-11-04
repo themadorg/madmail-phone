@@ -1,5 +1,7 @@
 package org.madmail.mobile
 
+import androidx.annotation.StringRes
+import androidx.compose.ui.res.stringResource
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.Animatable
@@ -66,6 +68,7 @@ internal fun MadmailApp() {
     var replayIntro by remember { mutableStateOf(false) }
     LaunchedEffect(setup) { if (!setup) replayIntro = false }
     val context = LocalContext.current
+    val thisPhone = stringResource(R.string.common_this_phone)
     val scope = rememberCoroutineScope()
     val profiles = remember { ServerProfiles(context) }
     var remotes by remember { mutableStateOf(profiles.load()) }
@@ -122,7 +125,7 @@ internal fun MadmailApp() {
                         val saved = profiles.save(host, user, port)
                         // Stored encrypted; the connection sheet reuses it when the endpoint matches. A failed write leaves no half-saved server.
                         if (apiEndpoint != null && apiKey != null) runCatching { org.madmail.mobile.engine.RemoteCredentials(context, saved.id).saveApi(apiEndpoint, apiKey) }
-                            .onFailure { if (!existed) profiles.remove(saved.id); return@HostSetup "Couldn’t save the key. Try again." }
+                            .onFailure { if (!existed) profiles.remove(saved.id); return@HostSetup context.getString(R.string.common_error_save_key) }
                         context.getSharedPreferences("remote-options-${saved.id}", android.content.Context.MODE_PRIVATE).edit().putString("preferred", if (apiEndpoint == null) "ssh" else "api").apply { if (apiEndpoint != null) putString("api-endpoint", apiEndpoint) }.apply()
                         // Verification and sign-in follow straight on instead of leaving the user on an unconnected Overview.
                         PendingConnect.request(saved.id)
@@ -141,14 +144,14 @@ internal fun MadmailApp() {
                     val displayedId = destination.first
                     val displayedRemote = remotes.find { it.id == displayedId }
                     val displayedIdentity = identities[displayedId] ?: org.madmail.mobile.core.ServerIdentity()
-                    val displayedName = displayedIdentity.name.ifBlank { displayedRemote?.host ?: "This phone" }
+                    val displayedName = displayedIdentity.name.ifBlank { displayedRemote?.host ?: thisPhone }
                     val displayedScroll = remember(destination) { androidx.compose.foundation.ScrollState(0) }
                     Column(Modifier.fillMaxSize().statusBarsPadding().hazeSource(haze).verticalScroll(displayedScroll)
                         .padding(horizontal = GroupGutter).padding(top = 28.dp, bottom = 140.dp),
                         verticalArrangement = Arrangement.spacedBy(24.dp)) {
                         // Same shape as Settings: the page is the title, the server rides under it.
-                        if (displayedPage == 1) PageTitle("Statistics", displayedName)
-                        if (displayedPage == 2) PageTitle("Invite", displayedName)
+                        if (displayedPage == 1) PageTitle(stringResource(R.string.common_statistics), displayedName)
+                        if (displayedPage == 2) PageTitle(stringResource(R.string.common_invite), displayedName)
                         key(displayedId) {
                         // Finish cleaning up account QRs from earlier sessions without waiting for a visit to Invite.
                         LaunchedEffect(Unit) { org.madmail.mobile.engine.AccountQrRotation.get(context, displayedId, displayedRemote).tidy() }
@@ -159,8 +162,8 @@ internal fun MadmailApp() {
                                 OverviewScreen(displayedName, displayedIdentity, displayedRemote, onSettings = { openHostingPreferences = displayedRemote == null; page = 3 }) {
                                     // Invitations and account QRs live on the Invite page; Overview only links to it.
                                     Column {
-                                        Caption("Invite")
-                                        Group { NavRow({ TintIcon(Tint.Purple, Icons.Rounded.QrCode2) }, "Connect another device") { page = 2 } }
+                                        Caption(stringResource(R.string.common_invite))
+                                        Group { NavRow({ TintIcon(Tint.Purple, Icons.Rounded.QrCode2) }, stringResource(R.string.common_connect_another_device)) { page = 2 } }
                                     }
                                 }
                             }
@@ -175,7 +178,7 @@ internal fun MadmailApp() {
                         }
                     }
                 }
-                GlassDock(haze, page, identity.name.ifBlank { remote?.host ?: "This phone" }, identity.mark, remote == null, power, { openHostingPreferences = false; page = it }, { chooseServer = true }, { debug = true }, Modifier.align(Alignment.BottomCenter))
+                GlassDock(haze, page, identity.name.ifBlank { remote?.host ?: thisPhone }, identity.mark, remote == null, power, { openHostingPreferences = false; page = it }, { chooseServer = true }, { debug = true }, Modifier.align(Alignment.BottomCenter))
             }
         }
     }
@@ -184,7 +187,7 @@ internal fun MadmailApp() {
             identityStore.save(id, updated)
             identities = identities + (id to updated)
         }, onEditing = { editingServer = it }, onOpen = { id, target -> selectServer(id); page = target; openHostingPreferences = false; chooseServer = false },
-            onRemove = { removeServer(it); toaster.show("Server removed."); if (selectedId.isBlank()) chooseServer = false })
+            onRemove = { removeServer(it); toaster.show(context.getString(R.string.common_server_removed)); if (selectedId.isBlank()) chooseServer = false })
     }
     if (debug) KitSheet(onDismiss = { debug = false }) { DebugMenu(serverId, remote) { debug = false; replayIntro = true; setup = true } }
 }
@@ -218,11 +221,11 @@ private fun GlassDock(haze: HazeState, page: Int, serverName: String, serverMark
     }
 }
 
-private class DockItem(val label: String, val active: ImageVector, val idle: ImageVector)
+private class DockItem(@StringRes val label: Int, val active: ImageVector, val idle: ImageVector)
 // Page numbers are the tab order: 0 Home, 1 Statistics, 2 Invite, 3 Settings.
-private val DockTabs = listOf(DockItem("Home", Icons.Rounded.Home, Icons.Outlined.Home), DockItem("Stats", Icons.Rounded.BarChart, Icons.Outlined.BarChart),
-    DockItem("Invite", Icons.Rounded.QrCode2, Icons.Outlined.QrCode2),
-    DockItem("Settings", Icons.Rounded.Settings, Icons.Outlined.Settings))
+private val DockTabs = listOf(DockItem(R.string.common_tab_home, Icons.Rounded.Home, Icons.Outlined.Home), DockItem(R.string.common_tab_stats, Icons.Rounded.BarChart, Icons.Outlined.BarChart),
+    DockItem(R.string.common_invite, Icons.Rounded.QrCode2, Icons.Outlined.QrCode2),
+    DockItem(R.string.common_tab_settings, Icons.Rounded.Settings, Icons.Outlined.Settings))
 private val DockHeight = 64.dp
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -245,7 +248,7 @@ private fun RowScope.DockTab(item: DockItem, active: Boolean, onClick: () -> Uni
     Column(Modifier.weight(1f).fillMaxHeight().pressScale(source, 0.92f).clip(CircleShape).semantics(mergeDescendants = true) { selected = active }.then(press),
         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically)) {
         Icon(if (active) item.active else item.idle, null, Modifier.size(24.dp).graphicsLayer { scaleX = pop.value; scaleY = pop.value }, tint = tint)
-        Text(item.label, style = MaterialTheme.typography.labelSmall, fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium, color = tint, maxLines = 1)
+        Text(stringResource(item.label), style = MaterialTheme.typography.labelSmall, fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium, color = tint, maxLines = 1)
     }
 }
 
@@ -254,14 +257,16 @@ private fun RowScope.DockTab(item: DockItem, active: Boolean, onClick: () -> Uni
 private fun DockServer(haze: HazeState, glass: HazeStyle, edge: Brush, name: String, mark: String, phone: Boolean, power: PowerPhase, onClick: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     val source = remember { MutableInteractionSource() }
-    val status = when (power) { PowerPhase.On -> "live"; PowerPhase.Starting -> "starting"; PowerPhase.Stopping -> "stopping"; PowerPhase.Failed -> "failed"; PowerPhase.Off -> "off" }
+    val status = stringResource(when (power) { PowerPhase.On -> R.string.common_dock_status_live; PowerPhase.Starting -> R.string.common_dock_status_starting; PowerPhase.Stopping -> R.string.common_dock_status_stopping
+        PowerPhase.Failed -> R.string.common_dock_status_failed; PowerPhase.Off -> R.string.common_dock_status_off })
+    val description = stringResource(R.string.common_dock_server_description, name, status)
     val dot by animateColorAsState(when (power) {
         PowerPhase.On -> Success; PowerPhase.Failed -> colors.error; PowerPhase.Starting, PowerPhase.Stopping -> Success.copy(alpha = .45f); PowerPhase.Off -> colors.outline
     }, tween(280, easing = Emphasized), label = "Server state")
     Box(Modifier.size(DockHeight).pressScale(source, 0.92f)) {
         Box(Modifier.matchParentSize().clip(CircleShape).hazeEffect(haze, glass).border(1.dp, edge, CircleShape)
-            .clickable(source, ripple(), role = Role.Button, onClickLabel = "Switch server", onClick = rememberTap(onClick))
-            .semantics { contentDescription = "$name, $status" }, contentAlignment = Alignment.Center) {
+            .clickable(source, ripple(), role = Role.Button, onClickLabel = stringResource(R.string.common_switch_server), onClick = rememberTap(onClick))
+            .semantics { contentDescription = description }, contentAlignment = Alignment.Center) {
             ServerMark(mark, phone, size = 38.dp)
         }
         Box(Modifier.align(Alignment.TopEnd).padding(top = 7.dp, end = 7.dp).size(14.dp).clip(CircleShape).background(colors.surface).padding(2.5.dp)

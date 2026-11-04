@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- App lock -->
+    <string name="common_applock_title_unlock">Déverrouiller Madmail</string>
+    <string name="common_applock_title_enable">Activer le verrouillage de l’app</string>
+    <string name="common_applock_title_disable">Désactiver le verrouillage de l’app</string>
+    <string name="common_applock_subtitle">Empreinte digitale ou verrouillage d’écran</string>
+    <string name="common_applock_confirm">Confirmez le verrouillage d’écran</string>
+    <string name="common_applock_error_save">Impossible d’enregistrer le verrouillage de l’app. Réessayez.</string>
+    <string name="common_applock_error_failed">Non déverrouillé. Réessayez.</string>
+    <string name="common_applock_error_no_screen_lock">Définissez un verrouillage d’écran dans les Réglages, puis réessayez.</string>
+    <string name="common_applock_error_open">Impossible d’ouvrir le déverrouillage. Réessayez.</string>
+    <string name="common_applock_locked_title">Madmail est verrouillé</string>
+    <string name="common_applock_locked_body">L’hébergement reste actif.</string>
+    <string name="common_applock_waiting">En attente…</string>
+    <string name="common_applock_unlock">Déverrouiller</string>
+    <string name="common_applock_setting">Verrouillage de l’app</string>
+    <string name="common_applock_lock_now">Verrouiller maintenant</string>
+    <string name="common_applock_footer">Se verrouille quand vous quittez l’app. L’hébergement reste actif.</string>
+
+    <!-- Phone hosting settings -->
+    <string name="common_ports_caption">Ports de connexion</string>
+    <string name="common_ports_standard">Ports standard</string>
+    <string name="common_ports_needs_root">Nécessite root</string>
+    <string name="common_ports_root_saved">Enregistré. La prise en charge de root n’est pas encore disponible.</string>
+    <string name="common_data_caption">Données</string>
+    <string name="common_data_on_phone">Restent sur ce téléphone</string>
+    <string name="common_data_private_storage">Stockage privé de l’app</string>
+    <string name="common_data_footer">La désinstallation les supprime. Pas encore de sauvegarde.</string>
+
+    <!-- Network notice -->
+    <string name="common_network_none">Aucun réseau</string>
+    <string name="common_network_none_detail">Les invités ne peuvent pas joindre ce téléphone. Connectez-vous au Wi-Fi, activez les données mobiles ou un point d’accès, ou connectez un VPN.</string>
+    <string name="common_network_wifi_settings">Réglages Wi-Fi</string>
+    <string name="common_network_hotspot_settings">Réglages du point d’accès</string>
+
+    <!-- Hosting status -->
+    <string name="common_hosting_live">L’hébergement est actif</string>
+    <string name="common_hosting_starting">Démarrage…</string>
+    <string name="common_hosting_stopping">Arrêt…</string>
+    <string name="common_hosting_failed">Échec de l’hébergement</string>
+    <string name="common_hosting_off">L’hébergement est désactivé</string>
+    <string name="common_hosting_detail_unreachable">Aucun réseau : les invités ne peuvent pas le joindre.</string>
+    <string name="common_hosting_detail_ready">Prêt pour les connexions.</string>
+    <string name="common_hosting_detail_error">Voir l’erreur ci-dessous.</string>
+    <string name="common_hosting_detail_choose_version">Choisissez une version ci-dessous.</string>
+    <string name="common_hosting_on_title">Activer l’hébergement ?</string>
+    <string name="common_hosting_on_text">Ce téléphone commence à servir le courrier. Gardez-le chargé et en ligne.</string>
+    <string name="common_hosting_on_action">Activer</string>
+    <string name="common_hosting_off_title">Désactiver l’hébergement ?</string>
+    <string name="common_hosting_off_text">Les personnes sur ce téléphone ne pourront ni envoyer ni recevoir de courrier tant que vous ne le réactivez pas.</string>
+    <string name="common_hosting_off_action">Désactiver</string>
+    <string name="common_power_on">Activé</string>
+    <string name="common_power_starting">Démarrage</string>
+    <string name="common_power_stopping">Arrêt</string>
+    <string name="common_power_off">Désactivé</string>
+
+    <!-- Engine versions and background access -->
+    <string name="common_engine_versions">Versions</string>
+    <string name="common_engine_versions_title">Versions de Madmail</string>
+    <string name="common_engine_refresh">Rechercher de nouvelles versions</string>
+    <string name="common_engine_in_use">Utilisée</string>
+    <string name="common_engine_installed">Installée</string>
+    <string name="common_engine_available">Disponible</string>
+    <string name="common_engine_unavailable">Indisponible</string>
+    <string name="common_engine_select">Choisir</string>
+    <string name="common_engine_download">Télécharger</string>
+    <string name="common_engine_no_releases">Aucune version trouvée.</string>
+    <plurals name="common_engine_hidden_releases">
+        <item quantity="one">%1$d ancienne version n’a pas de build Android.</item>
+        <item quantity="many">%1$d anciennes versions n’ont pas de build Android.</item>
+        <item quantity="other">%1$d anciennes versions n’ont pas de build Android.</item>
+    </plurals>
+    <string name="common_engine_downloading">Téléchargement…</string>
+    <string name="common_engine_install">Installer %1$s</string>
+    <string name="common_engine_hide_link">Masquer le lien</string>
+    <string name="common_engine_install_from_link">Installer depuis un lien</string>
+    <string name="common_engine_url">URL</string>
+    <string name="common_engine_signed_url">URL de mise à jour signée.</string>
+    <string name="common_background_access">Accès en arrière-plan</string>
+    <string name="common_background_allow_title">Autoriser l’hébergement en arrière-plan</string>
+    <string name="common_background_works">Fonctionne écran éteint.</string>
+    <string name="common_background_works_battery">Fonctionne écran éteint. Consomme plus de batterie.</string>
+    <string name="common_background_allowed">Autorisé</string>
+    <string name="common_background_allow">Autoriser</string>
+    <string name="common_background_error">Autorisez-le dans Réglages → Applications → Madmail → Batterie.</string>
+
+    <!-- App shell -->
+    <string name="common_this_phone">Ce téléphone</string>
+    <string name="common_statistics">Statistiques</string>
+    <string name="common_invite">Inviter</string>
+    <string name="common_connect_another_device">Connecter un autre appareil</string>
+    <string name="common_error_save_key">Impossible d’enregistrer la clé. Réessayez.</string>
+    <string name="common_server_removed">Serveur supprimé.</string>
+    <string name="common_tab_home">Accueil</string>
+    <string name="common_tab_stats">Stats</string>
+    <string name="common_tab_settings">Réglages</string>
+    <string name="common_switch_server">Changer de serveur</string>
+    <string name="common_dock_status_live">actif</string>
+    <string name="common_dock_status_starting">démarrage</string>
+    <string name="common_dock_status_stopping">arrêt</string>
+    <string name="common_dock_status_failed">en échec</string>
+    <string name="common_dock_status_off">éteint</string>
+    <string name="common_dock_server_description">%1$s, %2$s</string>
+
+    <!-- Design kit -->
+    <string name="common_copy_label">Copier %1$s</string>
+    <string name="common_copied">Copié</string>
+    <string name="common_drag_handle">Poignée de déplacement</string>
+    <string name="common_cancel">Annuler</string>
+</resources>

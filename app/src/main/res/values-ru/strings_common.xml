@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- App lock -->
+    <string name="common_applock_title_unlock">Разблокировать Madmail</string>
+    <string name="common_applock_title_enable">Включить блокировку приложения</string>
+    <string name="common_applock_title_disable">Выключить блокировку приложения</string>
+    <string name="common_applock_subtitle">Отпечаток пальца или блокировка экрана</string>
+    <string name="common_applock_confirm">Подтвердите блокировку экрана</string>
+    <string name="common_applock_error_save">Не удалось сохранить блокировку приложения. Повторите попытку.</string>
+    <string name="common_applock_error_failed">Не разблокировано. Повторите попытку.</string>
+    <string name="common_applock_error_no_screen_lock">Настройте блокировку экрана в настройках и повторите попытку.</string>
+    <string name="common_applock_error_open">Не удалось открыть разблокировку. Повторите попытку.</string>
+    <string name="common_applock_locked_title">Madmail заблокирован</string>
+    <string name="common_applock_locked_body">Хостинг продолжает работать.</string>
+    <string name="common_applock_waiting">Ожидание…</string>
+    <string name="common_applock_unlock">Разблокировать</string>
+    <string name="common_applock_setting">Блокировка приложения</string>
+    <string name="common_applock_lock_now">Заблокировать сейчас</string>
+    <string name="common_applock_footer">Блокируется, когда вы выходите. Хостинг продолжает работать.</string>
+
+    <!-- Phone hosting settings -->
+    <string name="common_ports_caption">Порты подключения</string>
+    <string name="common_ports_standard">Стандартные порты</string>
+    <string name="common_ports_needs_root">Нужен root</string>
+    <string name="common_ports_root_saved">Сохранено. Поддержка root пока недоступна.</string>
+    <string name="common_data_caption">Данные</string>
+    <string name="common_data_on_phone">Остаются на этом телефоне</string>
+    <string name="common_data_private_storage">Приватное хранилище приложения</string>
+    <string name="common_data_footer">При удалении приложения данные стираются. Резервного копирования пока нет.</string>
+
+    <!-- Network notice -->
+    <string name="common_network_none">Нет сети</string>
+    <string name="common_network_none_detail">Гости не могут подключиться к этому телефону. Подключитесь к Wi-Fi, включите мобильный интернет или точку доступа либо подключите VPN.</string>
+    <string name="common_network_wifi_settings">Настройки Wi-Fi</string>
+    <string name="common_network_hotspot_settings">Настройки точки доступа</string>
+
+    <!-- Hosting status -->
+    <string name="common_hosting_live">Хостинг работает</string>
+    <string name="common_hosting_starting">Запуск…</string>
+    <string name="common_hosting_stopping">Остановка…</string>
+    <string name="common_hosting_failed">Сбой хостинга</string>
+    <string name="common_hosting_off">Хостинг выключен</string>
+    <string name="common_hosting_detail_unreachable">Нет сети, поэтому гости не могут подключиться.</string>
+    <string name="common_hosting_detail_ready">Готов к подключениям.</string>
+    <string name="common_hosting_detail_error">Ошибка указана ниже.</string>
+    <string name="common_hosting_detail_choose_version">Выберите версию ниже.</string>
+    <string name="common_hosting_on_title">Включить хостинг?</string>
+    <string name="common_hosting_on_text">Этот телефон начнёт обслуживать почту. Держите его заряженным и подключённым к сети.</string>
+    <string name="common_hosting_on_action">Включить</string>
+    <string name="common_hosting_off_title">Выключить хостинг?</string>
+    <string name="common_hosting_off_text">Пользователи этого телефона не смогут отправлять и получать почту, пока вы его не включите.</string>
+    <string name="common_hosting_off_action">Выключить</string>
+    <string name="common_power_on">Включён</string>
+    <string name="common_power_starting">Запускается</string>
+    <string name="common_power_stopping">Останавливается</string>
+    <string name="common_power_off">Выключен</string>
+
+    <!-- Engine versions and background access -->
+    <string name="common_engine_versions">Версии</string>
+    <string name="common_engine_versions_title">Версии Madmail</string>
+    <string name="common_engine_refresh">Проверить новые версии</string>
+    <string name="common_engine_in_use">Используется</string>
+    <string name="common_engine_installed">Установлена</string>
+    <string name="common_engine_available">Доступна</string>
+    <string name="common_engine_unavailable">Недоступна</string>
+    <string name="common_engine_select">Выбрать</string>
+    <string name="common_engine_download">Скачать</string>
+    <string name="common_engine_no_releases">Релизы не найдены.</string>
+    <plurals name="common_engine_hidden_releases">
+        <item quantity="one">У %1$d старого релиза нет сборки для Android.</item>
+        <item quantity="few">У %1$d старых релизов нет сборки для Android.</item>
+        <item quantity="many">У %1$d старых релизов нет сборки для Android.</item>
+        <item quantity="other">У %1$d старых релизов нет сборки для Android.</item>
+    </plurals>
+    <string name="common_engine_downloading">Скачивание…</string>
+    <string name="common_engine_install">Установить %1$s</string>
+    <string name="common_engine_hide_link">Скрыть ссылку</string>
+    <string name="common_engine_install_from_link">Установить по ссылке</string>
+    <string name="common_engine_url">URL</string>
+    <string name="common_engine_signed_url">Подписанный URL обновления.</string>
+    <string name="common_background_access">Работа в фоне</string>
+    <string name="common_background_allow_title">Разрешить хостинг в фоне</string>
+    <string name="common_background_works">Работает при выключенном экране.</string>
+    <string name="common_background_works_battery">Работает при выключенном экране. Расходует больше заряда.</string>
+    <string name="common_background_allowed">Разрешено</string>
+    <string name="common_background_allow">Разрешить</string>
+    <string name="common_background_error">Разрешите в Настройки → Приложения → Madmail → Батарея.</string>
+
+    <!-- App shell -->
+    <string name="common_this_phone">Этот телефон</string>
+    <string name="common_statistics">Статистика</string>
+    <string name="common_invite">Приглашение</string>
+    <string name="common_connect_another_device">Подключить другое устройство</string>
+    <string name="common_error_save_key">Не удалось сохранить ключ. Повторите попытку.</string>
+    <string name="common_server_removed">Сервер удалён.</string>
+    <string name="common_tab_home">Главная</string>
+    <string name="common_tab_stats">Стат.</string>
+    <string name="common_tab_settings">Настройки</string>
+    <string name="common_switch_server">Сменить сервер</string>
+    <string name="common_dock_status_live">работает</string>
+    <string name="common_dock_status_starting">запускается</string>
+    <string name="common_dock_status_stopping">останавливается</string>
+    <string name="common_dock_status_failed">сбой</string>
+    <string name="common_dock_status_off">выключен</string>
+    <string name="common_dock_server_description">%1$s, %2$s</string>
+
+    <!-- Design kit -->
+    <string name="common_copy_label">Копировать: %1$s</string>
+    <string name="common_copied">Скопировано</string>
+    <string name="common_drag_handle">Маркер перетаскивания</string>
+    <string name="common_cancel">Отмена</string>
+</resources>

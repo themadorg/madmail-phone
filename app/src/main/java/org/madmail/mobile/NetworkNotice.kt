@@ -1,5 +1,6 @@
 package org.madmail.mobile
 
+import androidx.compose.ui.res.stringResource
 import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
@@ -63,12 +64,12 @@ internal fun rememberGuestNetworks(): State<List<GuestAddress>?> {
 internal fun NoNetworkNotice(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     Group(modifier) {
-        InfoRow(Tint.Orange, Icons.Rounded.WifiOff, "No network", "Guests can’t reach this phone. Join Wi-Fi, turn on mobile data or a hotspot, or connect a VPN.")
+        InfoRow(Tint.Orange, Icons.Rounded.WifiOff, stringResource(R.string.common_network_none), stringResource(R.string.common_network_none_detail))
         RowDivider(64.dp)
-        ActionRow("Wi-Fi settings", { context.openWifiSettings() }, icon = Icons.Rounded.Wifi)
+        ActionRow(stringResource(R.string.common_network_wifi_settings), { context.openWifiSettings() }, icon = Icons.Rounded.Wifi)
         RowDivider(48.dp)
         // Tethering has no public settings action; fall back to the network page that links to it.
-        ActionRow("Hotspot settings", { context.openSettings(TETHER_SETTINGS, Settings.ACTION_WIRELESS_SETTINGS) }, icon = Icons.Rounded.WifiTethering)
+        ActionRow(stringResource(R.string.common_network_hotspot_settings), { context.openSettings(TETHER_SETTINGS, Settings.ACTION_WIRELESS_SETTINGS) }, icon = Icons.Rounded.WifiTethering)
     }
 }
 

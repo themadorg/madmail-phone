@@ -112,6 +112,9 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.annotation.DrawableRes
+import androidx.annotation.StringRes
+import android.content.Context
+import androidx.compose.ui.res.stringResource
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
@@ -132,34 +135,41 @@ import kotlin.math.floor
  * A place a remote Madmail server can live. Providers only prefill the sign-in user and hints; nothing is provisioned.
  * [logo] is the brand's mark (Simple Icons, CC0) drawn white on [tint]..[tint2]; providers without an open mark keep [monogram].
  */
-internal data class RemoteProvider(val id: String, val name: String, val note: String, val hint: String, val user: String = "root",
+internal data class RemoteProvider(val id: String, val name: String, @StringRes val noteRes: Int, @StringRes val hintRes: Int, val user: String = "root",
     val monogram: String? = null, val tint: Long = 0, val tint2: Long = 0, val ink: Long = 0xFFFFFFFF, val apiOnly: Boolean = false,
-    @DrawableRes val logo: Int? = null, val userHint: String = "", val keyHint: String = AUTHORIZED_KEYS)
+    @DrawableRes val logo: Int? = null, @StringRes val userHintRes: Int = 0, @StringRes val keyHintRes: Int = R.string.host_setup_key_hint_default,
+    /** Overrides [name] when set; brand names stay literal and are not translated. */
+    @StringRes val nameRes: Int = 0)
+
+@Composable
+internal fun RemoteProvider.displayName(): String = if (nameRes != 0) stringResource(nameRes) else name
+
+@Composable
+internal fun RemoteProvider.keyHintText(): String = stringResource(keyHintRes)
 
 // Most consoles only inject keys when a server is created, so authorized_keys is the instruction that always works.
-private const val AUTHORIZED_KEYS = "Add it to ~/.ssh/authorized_keys on the server."
 
-internal val existingInstance = RemoteProvider("api", "Madmail Admin API", "Already running Madmail", "Enter its address and admin API key.", apiOnly = true)
+internal val existingInstance = RemoteProvider("api", "Madmail Admin API", R.string.host_setup_existing_note, R.string.host_setup_existing_hint, apiOnly = true)
 
-private val selfHosted = RemoteProvider("ssh", "Self-hosted server", "Any Linux server over SSH", "Its public IP address or hostname.",
-    userHint = "Root, or an account with sudo.")
+private val selfHosted = RemoteProvider("ssh", "Self-hosted server", R.string.host_setup_self_note, R.string.host_setup_self_hint,
+    userHintRes = R.string.host_setup_self_user, nameRes = R.string.host_setup_self_name)
 
 private val cloudProviders = listOf(
-    RemoteProvider("digitalocean", "DigitalOcean", "Droplet · username root", "Shown on the Droplet’s page.", monogram = "DO", tint = 0xFF2693FF, tint2 = 0xFF0080FF,
-        logo = R.drawable.ic_provider_digitalocean, userHint = "Droplets sign in as root.", keyHint = "Open the Droplet Console and add it to ~/.ssh/authorized_keys."),
-    RemoteProvider("aws", "Amazon Web Services", "EC2 or Lightsail · username ubuntu", "Use the instance’s public IPv4.", "ubuntu", "aws", 0xFFFFB23F, 0xFFF08300, 0xFF232F3E,
-        userHint = "Ubuntu uses ubuntu; Amazon Linux, ec2-user.", keyHint = "Use EC2 Instance Connect to add it to ~/.ssh/authorized_keys."),
-    RemoteProvider("gcp", "Google Cloud", "Compute Engine · your own username", "Use the VM’s external IP.", "", "G", 0xFF5E97F6, 0xFF4285F4,
-        logo = R.drawable.ic_provider_gcp, userHint = "Use your SSH key’s username.", keyHint = "Add it under the VM’s SSH keys, ending with your username."),
-    RemoteProvider("hetzner", "Hetzner", "Cloud server · username root", "Shown in Cloud Console under Servers.", monogram = "H", tint = 0xFFDB304C, tint2 = 0xFFD50C2D,
-        logo = R.drawable.ic_provider_hetzner, userHint = "Hetzner servers sign in as root.", keyHint = "Open the server’s Console and add it to ~/.ssh/authorized_keys."),
+    RemoteProvider("digitalocean", "DigitalOcean", R.string.host_setup_do_note, R.string.host_setup_do_hint, monogram = "DO", tint = 0xFF2693FF, tint2 = 0xFF0080FF,
+        logo = R.drawable.ic_provider_digitalocean, userHintRes = R.string.host_setup_do_user, keyHintRes = R.string.host_setup_do_key),
+    RemoteProvider("aws", "Amazon Web Services", R.string.host_setup_aws_note, R.string.host_setup_aws_hint, "ubuntu", "aws", 0xFFFFB23F, 0xFFF08300, 0xFF232F3E,
+        userHintRes = R.string.host_setup_aws_user, keyHintRes = R.string.host_setup_aws_key),
+    RemoteProvider("gcp", "Google Cloud", R.string.host_setup_gcp_note, R.string.host_setup_gcp_hint, "", "G", 0xFF5E97F6, 0xFF4285F4,
+        logo = R.drawable.ic_provider_gcp, userHintRes = R.string.host_setup_gcp_user, keyHintRes = R.string.host_setup_gcp_key),
+    RemoteProvider("hetzner", "Hetzner", R.string.host_setup_hetzner_note, R.string.host_setup_hetzner_hint, monogram = "H", tint = 0xFFDB304C, tint2 = 0xFFD50C2D,
+        logo = R.drawable.ic_provider_hetzner, userHintRes = R.string.host_setup_hetzner_user, keyHintRes = R.string.host_setup_hetzner_key),
     // Linode's own mark was withdrawn from Simple Icons; Akamai's stands in for it.
-    RemoteProvider("linode", "Akamai Linode", "Linode · username root", "Shown on the Linode’s Network tab.", monogram = "L", tint = 0xFF26A6DC, tint2 = 0xFF0096D6,
-        logo = R.drawable.ic_provider_linode, userHint = "Linodes sign in as root.", keyHint = "Open the LISH Console and add it to ~/.ssh/authorized_keys."),
-    RemoteProvider("vultr", "Vultr", "Cloud compute · username root", "Shown on the server’s Overview.", monogram = "V", tint = 0xFF268FFC, tint2 = 0xFF007BFC,
-        logo = R.drawable.ic_provider_vultr, userHint = "Vultr servers sign in as root.", keyHint = "Open View Console and add it to ~/.ssh/authorized_keys."),
-    RemoteProvider("oracle", "Oracle Cloud", "Ubuntu instance · username ubuntu", "Use the instance’s public IP.", "ubuntu", "O", 0xFFFF8A65, 0xFFD2501F,
-        userHint = "Ubuntu uses ubuntu; Oracle Linux, opc.", keyHint = "Use Cloud Shell or the console to add it to ~/.ssh/authorized_keys."),
+    RemoteProvider("linode", "Akamai Linode", R.string.host_setup_linode_note, R.string.host_setup_linode_hint, monogram = "L", tint = 0xFF26A6DC, tint2 = 0xFF0096D6,
+        logo = R.drawable.ic_provider_linode, userHintRes = R.string.host_setup_linode_user, keyHintRes = R.string.host_setup_linode_key),
+    RemoteProvider("vultr", "Vultr", R.string.host_setup_vultr_note, R.string.host_setup_vultr_hint, monogram = "V", tint = 0xFF268FFC, tint2 = 0xFF007BFC,
+        logo = R.drawable.ic_provider_vultr, userHintRes = R.string.host_setup_vultr_user, keyHintRes = R.string.host_setup_vultr_key),
+    RemoteProvider("oracle", "Oracle Cloud", R.string.host_setup_oracle_note, R.string.host_setup_oracle_hint, "ubuntu", "O", 0xFFFF8A65, 0xFFD2501F,
+        userHintRes = R.string.host_setup_oracle_user, keyHintRes = R.string.host_setup_oracle_key),
 )
 
 internal val remoteProviders = listOf(selfHosted) + cloudProviders
@@ -181,14 +191,14 @@ private fun SetupStep.wizard(): Pair<Int, Int>? = when (this) {
     else -> null
 }
 
-private class IntroPage(val title: String, val body: String, val terminal: String)
+private class IntroPage(@StringRes val title: Int, @StringRes val body: Int, val terminal: String)
 
 // The terminal lines are what the app really does at each step: the ports it opens, the link a QR holds, the SSH it runs.
 private val introPages = listOf(
-    IntroPage("A mail server,\non your terms.", "Host Madmail for the people you invite.", "$ madmail --config madmail.conf run"),
-    IntroPage("Runs on this phone.", "Over Wi-Fi, hotspot or VPN. No root needed.", "listening :11465 :11993 :18443"),
-    IntroPage("Invite with a scan.", "Each guest scans their own QR in Delta Chat.", "dclogin://… · one QR per guest"),
-    IntroPage("Or on your own server.", "Connect a VPS and manage it from here.", "ssh root@vps · systemctl status madmail"),
+    IntroPage(R.string.host_setup_intro_1_title, R.string.host_setup_intro_1_body, "$ madmail --config madmail.conf run"),
+    IntroPage(R.string.host_setup_intro_2_title, R.string.host_setup_intro_2_body, "listening :11465 :11993 :18443"),
+    IntroPage(R.string.host_setup_intro_3_title, R.string.host_setup_intro_3_body, "dclogin://… · one QR per guest"),
+    IntroPage(R.string.host_setup_intro_4_title, R.string.host_setup_intro_4_body, "ssh root@vps · systemctl status madmail"),
 )
 
 // One curve for every morph: quick start, long settle, no overshoot.
@@ -221,6 +231,16 @@ internal fun HostSetup(phone: Boolean, phoneConfigured: Boolean, initialName: St
     val scope = rememberCoroutineScope()
     val focus = LocalFocusManager.current
     val haptics = LocalHapticFeedback.current
+    val context = LocalContext.current
+    val paneAdd = stringResource(R.string.host_setup_add_server_title)
+    val paneProviders = stringResource(R.string.host_setup_providers_pane)
+    val paneAddress = stringResource(R.string.host_setup_address_title)
+    val paneSignIn = stringResource(R.string.host_setup_sign_in_as)
+    val paneExisting = stringResource(R.string.host_setup_connect_madmail)
+    val paneApiKey = stringResource(R.string.host_setup_admin_api_key)
+    val panePhone = stringResource(R.string.host_setup_phone_pane)
+    val labelContinue = stringResource(R.string.host_setup_continue)
+    val labelConnect = stringResource(R.string.host_setup_connect)
     val provider = remoteProviders.firstOrNull { it.id == providerId }
     val step = when {
         existing -> if (stage == 0) SetupStep.Existing else SetupStep.ApiKey
@@ -246,21 +266,21 @@ internal fun HostSetup(phone: Boolean, phoneConfigured: Boolean, initialName: St
         if (first >= 0) { haptics.performHapticFeedback(HapticFeedbackType.Reject); fields[first].requestFocus(); return }
         focus.clearFocus(); haptics.performHapticFeedback(HapticFeedbackType.Confirm); save()
     }
-    val remoteErrors = if (provider == null) List(3) { null } else listOf(hostError(parseSshTarget(host.trim()).host), userError(user, provider), portError(port))
+    val remoteErrors = if (provider == null) List(3) { null } else listOf(hostError(context, parseSshTarget(host.trim()).host), userError(context, user, provider), portError(context, port))
     val endpoint = apiEndpoint(address)
-    val existingErrors = listOf(addressError(address, endpoint), keyError(apiKey))
+    val existingErrors = listOf(addressError(context, address, endpoint), keyError(context, apiKey))
     val addressNext = {
         // Typed rather than pasted "root@5.75.1.2" is understood on submit too, and prefills the next step.
         val opened = advanced
         val target = parseSshTarget(host.trim())
         host = target.host; target.user?.let { user = it }; target.port?.let { port = it.toString(); if (it != 22) advanced = true }
-        val hostBad = hostError(host) != null; val portBad = portError(port) != null
+        val hostBad = hostError(context, host) != null; val portBad = portError(context, port) != null
         // A bad port hides under Advanced; open it first so the error is seen, and its field exists before it takes focus.
         if (portBad && !opened && !hostBad) { tried = true; advanced = true; haptics.performHapticFeedback(HapticFeedbackType.Reject) }
-        else { if (portBad) advanced = true; submit(listOf(hostError(host), null, portError(port))) { tried = false; stage = 1 } }
+        else { if (portBad) advanced = true; submit(listOf(hostError(context, host), null, portError(context, port))) { tried = false; stage = 1 } }
     }
     val saveRemote = {
-        submit(listOf(null, userError(user, provider ?: selfHosted), null)) {
+        submit(listOf(null, userError(context, user, provider ?: selfHosted), null)) {
             val number = port.toIntOrNull()?.takeIf { it in 1..65535 } ?: run { stage = 0; return@submit }
             SetupProviders.remember(host.trim(), user.trim(), number, (provider ?: selfHosted).id)
             onSaveRemote(host.trim(), user.trim(), number, null, null)
@@ -310,15 +330,15 @@ internal fun HostSetup(phone: Boolean, phoneConfigured: Boolean, initialName: St
             val morph = Morph(this@SharedTransitionLayout, this)
             when (shown) {
                 SetupStep.Intro -> morph.Intro(pager, choosing, onOpen = { tap(); choosing = true }, onClose = { choosing = false }, choices = choices)
-                SetupStep.Choose -> Column(Modifier.fillMaxSize().semantics { paneTitle = "Add a server" }) {
+                SetupStep.Choose -> Column(Modifier.fillMaxSize().semantics { paneTitle = paneAdd }) {
                     morph.TopBar(showLogo = true, showBack = false, onBack = ::back, onCancel = onCancel)
                     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(top = 12.dp, bottom = 24.dp)) {
-                        morph.StepHeader("Add a server", "Choose where it runs.")
+                        morph.StepHeader(paneAdd, stringResource(R.string.host_setup_choose_where_runs))
                         Spacer(Modifier.height(28.dp))
                         Box(Modifier.padding(horizontal = GroupGutter)) { morph.choices(groupColor()) }
                     }
                 }
-                SetupStep.Providers -> Column(Modifier.fillMaxSize().semantics { paneTitle = "Choose where your server runs" }) {
+                SetupStep.Providers -> Column(Modifier.fillMaxSize().semantics { paneTitle = paneProviders }) {
                     morph.TopBar(showLogo = false, showBack = true, onBack = ::back, onCancel = onCancel)
                     morph.ProvidersStep {
                         tap(); tried = false; stage = 0
@@ -326,7 +346,7 @@ internal fun HostSetup(phone: Boolean, phoneConfigured: Boolean, initialName: St
                         lastProviderId = it.id; providerId = it.id
                     }
                 }
-                SetupStep.Address -> Column(Modifier.fillMaxSize().semantics { paneTitle = "Server address" }) {
+                SetupStep.Address -> Column(Modifier.fillMaxSize().semantics { paneTitle = paneAddress }) {
                     morph.TopBar(showLogo = false, showBack = true, onBack = ::back, onCancel = onCancel)
                     Box(Modifier.weight(1f)) {
                         morph.AddressStep(provider ?: selfHosted, host, port, advanced, if (tried) remoteErrors else List(3) { null }, fields,
@@ -339,42 +359,42 @@ internal fun HostSetup(phone: Boolean, phoneConfigured: Boolean, initialName: St
                             },
                             onPort = { port = it.filter(Char::isDigit).take(5) }, onAdvanced = { advanced = !advanced }, onDone = addressNext)
                     }
-                    morph.ActionSlot("Continue", addressNext)
+                    morph.ActionSlot(labelContinue, addressNext)
                 }
-                SetupStep.Account -> Column(Modifier.fillMaxSize().semantics { paneTitle = "Sign in as" }) {
+                SetupStep.Account -> Column(Modifier.fillMaxSize().semantics { paneTitle = paneSignIn }) {
                     morph.TopBar(showLogo = false, showBack = true, onBack = ::back, onCancel = onCancel)
                     Box(Modifier.weight(1f)) {
                         morph.AccountStep(provider ?: selfHosted, user, if (tried) remoteErrors[1] else null, fields[1], onUser = { user = it.trim() }, onDone = saveRemote)
                     }
-                    morph.ActionSlot("Continue", saveRemote)
+                    morph.ActionSlot(labelContinue, saveRemote)
                 }
-                SetupStep.Existing -> Column(Modifier.fillMaxSize().semantics { paneTitle = "Connect your Madmail" }) {
+                SetupStep.Existing -> Column(Modifier.fillMaxSize().semantics { paneTitle = paneExisting }) {
                     morph.TopBar(showLogo = false, showBack = true, onBack = ::back, onCancel = onCancel)
                     Box(Modifier.weight(1f)) {
                         morph.ExistingStep(address, endpoint, if (tried) existingErrors[0] else null, fields[0],
                             onAddress = { address = it.trim(); saveError = null }, onDone = existingNext)
                     }
-                    morph.ActionSlot("Continue", existingNext)
+                    morph.ActionSlot(labelContinue, existingNext)
                 }
-                SetupStep.ApiKey -> Column(Modifier.fillMaxSize().semantics { paneTitle = "Admin API key" }) {
+                SetupStep.ApiKey -> Column(Modifier.fillMaxSize().semantics { paneTitle = paneApiKey }) {
                     morph.TopBar(showLogo = false, showBack = true, onBack = ::back, onCancel = onCancel)
                     Box(Modifier.weight(1f)) {
                         morph.ApiKeyStep(apiKey, saveError, if (tried) existingErrors[1] else null, fields[1],
                             onKey = { apiKey = it.trim(); saveError = null }, onDone = connect)
                     }
-                    morph.ActionSlot("Connect", connect)
+                    morph.ActionSlot(labelConnect, connect)
                 }
-                SetupStep.Phone -> Column(Modifier.fillMaxSize().semantics { paneTitle = "Host on this phone" }) {
+                SetupStep.Phone -> Column(Modifier.fillMaxSize().semantics { paneTitle = panePhone }) {
                     morph.TopBar(showLogo = false, showBack = true, onBack = ::back, onCancel = onCancel)
                     Box(Modifier.weight(1f)) { morph.PhoneStep(name, fields[0], { name = it.take(80) }) { focus.clearFocus() } }
-                    morph.ActionSlot(if (phoneConfigured) "Open phone server" else "Add this phone") {
+                    morph.ActionSlot(stringResource(if (phoneConfigured) R.string.host_setup_open_phone_server else R.string.host_setup_add_this_phone)) {
                         focus.clearFocus(); haptics.performHapticFeedback(HapticFeedbackType.Confirm); onComplete(name.trim())
                     }
                 }
             }
         }
         AnimatedVisibility(current != null, Modifier.align(Alignment.TopCenter).systemBarsPadding(), enter = fadeIn(tween(220, 80)), exit = fadeOut(tween(120))) {
-            Box(Modifier.height(56.dp), contentAlignment = Alignment.Center) { PageDots(dotPosition, dots.second, Modifier, "Step") }
+            Box(Modifier.height(56.dp), contentAlignment = Alignment.Center) { PageDots(dotPosition, dots.second, Modifier, R.string.host_setup_step_position) }
         }
     } }
 }
@@ -408,19 +428,19 @@ private fun parseSshTarget(raw: String): SshTarget {
 /** ssh options that consume a value, so the value is never mistaken for the destination. */
 private const val SSH_VALUE_OPTIONS = "BbcDEeFIiJLlmOoPpQRSWw"
 
-private fun hostError(host: String) = when {
-    host.isBlank() -> "Enter an IP address or hostname."
-    host.trim().any { it.isWhitespace() || it in "/@;" } -> "Use just the address, like 203.0.113.5."
+private fun hostError(context: Context, host: String) = when {
+    host.isBlank() -> context.getString(R.string.host_setup_err_host_blank)
+    host.trim().any { it.isWhitespace() || it in "/@;" } -> context.getString(R.string.host_setup_err_host_format)
     else -> null
 }
 
-private fun userError(user: String, provider: RemoteProvider) = when {
-    user.isBlank() -> if (provider.id == "gcp") "Enter your SSH key’s username." else "Enter a username."
-    !user.matches(Regex("[a-zA-Z_][a-zA-Z0-9_-]*")) -> "Usernames use letters, numbers, - and _."
+private fun userError(context: Context, user: String, provider: RemoteProvider) = when {
+    user.isBlank() -> context.getString(if (provider.id == "gcp") R.string.host_setup_err_user_gcp else R.string.host_setup_err_user_blank)
+    !user.matches(Regex("[a-zA-Z_][a-zA-Z0-9_-]*")) -> context.getString(R.string.host_setup_err_user_invalid)
     else -> null
 }
 
-private fun portError(port: String) = if (port.toIntOrNull() in 1..65535) null else "Use a port from 1 to 65535."
+private fun portError(context: Context, port: String) = if (port.toIntOrNull() in 1..65535) null else context.getString(R.string.host_setup_err_port)
 
 /** A bare domain gets https:// and normalize adds /api/admin, so "mail.example.org" is enough. */
 private fun apiEndpoint(address: String): String? {
@@ -428,17 +448,17 @@ private fun apiEndpoint(address: String): String? {
     return org.madmail.mobile.engine.ApiEndpoint.normalize(if ("://" in value) value else "https://$value")
 }
 
-private fun addressError(address: String, endpoint: String?) = when {
-    address.isBlank() -> "Enter your Madmail’s address."
-    address.trim().startsWith("http://", ignoreCase = true) -> "Use an https:// address."
-    endpoint == null -> "Enter an address like mail.example.org."
+private fun addressError(context: Context, address: String, endpoint: String?) = when {
+    address.isBlank() -> context.getString(R.string.host_setup_err_addr_blank)
+    address.trim().startsWith("http://", ignoreCase = true) -> context.getString(R.string.host_setup_err_addr_http)
+    endpoint == null -> context.getString(R.string.host_setup_err_addr_format)
     else -> null
 }
 
-private fun keyError(key: String) = when {
-    key.isBlank() -> "Paste the admin API key."
-    key.length > 8192 -> "Key too long. Copy only the key."
-    key.any { it.isISOControl() } -> "Key has invalid characters."
+private fun keyError(context: Context, key: String) = when {
+    key.isBlank() -> context.getString(R.string.host_setup_err_key_blank)
+    key.length > 8192 -> context.getString(R.string.host_setup_err_key_long)
+    key.any { it.isISOControl() } -> context.getString(R.string.host_setup_err_key_invalid)
     else -> null
 }
 
@@ -472,10 +492,10 @@ private class Morph(val shared: SharedTransitionScope, val visibility: AnimatedV
 private fun Morph.TopBar(showLogo: Boolean, showBack: Boolean, onBack: () -> Unit, onCancel: (() -> Unit)?) {
     Box(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 4.dp)) {
         if (showBack) IconButton(onClick = rememberTap(onBack), modifier = Modifier.align(Alignment.CenterStart).element("back")) {
-            Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back")
+            Icon(Icons.AutoMirrored.Outlined.ArrowBack, stringResource(R.string.host_setup_back))
         }
         if (showLogo) Image(painterResource(R.drawable.madmail_logo), null, Modifier.align(Alignment.Center).size(34.dp).element("logo"))
-        onCancel?.let { TextButton(onClick = it, modifier = Modifier.align(Alignment.CenterEnd).element("cancel")) { Text("Cancel") } }
+        onCancel?.let { TextButton(onClick = it, modifier = Modifier.align(Alignment.CenterEnd).element("cancel")) { Text(stringResource(R.string.host_setup_cancel)) } }
     }
 }
 
@@ -512,10 +532,10 @@ private fun Morph.Intro(pager: PagerState, choosing: Boolean, onOpen: () -> Unit
                     var plays by remember { mutableIntStateOf(0) }
                     LaunchedEffect(settled) { if (settled) plays++ }
                     Column(Modifier.fillMaxSize().padding(horizontal = 32.dp).padding(top = StageHeight + 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        DecodeText(page.title, plays, Modifier.semantics { heading() }, MaterialTheme.typography.displaySmall, red.copy(alpha = 0.85f),
+                        DecodeText(stringResource(page.title), plays, Modifier.semantics { heading() }, MaterialTheme.typography.displaySmall, red.copy(alpha = 0.85f),
                             TextAlign.Center, FontWeight.SemiBold, (-0.5).sp, 42.sp)
                         Spacer(Modifier.height(14.dp))
-                        Text(page.body, Modifier.widthIn(max = 360.dp), textAlign = TextAlign.Center,
+                        Text(stringResource(page.body), Modifier.widthIn(max = 360.dp), textAlign = TextAlign.Center,
                             style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.height(18.dp))
                         TerminalLine(page.terminal, plays, Modifier.clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
@@ -547,11 +567,11 @@ private fun Morph.Intro(pager: PagerState, choosing: Boolean, onOpen: () -> Unit
                         .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f)))
                     Row(Modifier.fillMaxWidth().padding(start = 4.dp, top = 8.dp, bottom = 16.dp)) {
                         Column(Modifier.weight(1f).padding(top = 6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text("How will you host?", Modifier.semantics { heading() }, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                            Text(stringResource(R.string.host_setup_how_will_you_host), Modifier.semantics { heading() }, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
                         }
                         Box(Modifier.size(48.dp).clip(CircleShape).clickable(onClick = onClose, role = Role.Button), contentAlignment = Alignment.Center) {
                             Box(Modifier.size(30.dp).clip(CircleShape).background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)), contentAlignment = Alignment.Center) {
-                                Icon(Icons.Rounded.Close, "Close", Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Icon(Icons.Rounded.Close, stringResource(R.string.host_setup_close), Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     }
@@ -562,7 +582,7 @@ private fun Morph.Intro(pager: PagerState, choosing: Boolean, onOpen: () -> Unit
                 if (faceShown) Box(Modifier.graphicsLayer { alpha = 1f - (progress.value / 0.3f).coerceIn(0f, 1f) }
                     .then(if (choosing) Modifier else Modifier.clickable(source, ripple(color = Color.White), role = Role.Button, onClick = onOpen)),
                     contentAlignment = Alignment.Center) {
-                    Text("Get started", color = Color.White, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, letterSpacing = 0.1.sp)
+                    Text(stringResource(R.string.host_setup_get_started), color = Color.White, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, letterSpacing = 0.1.sp)
                     Box(Modifier.align(Alignment.CenterEnd).padding(end = 8.dp).size(44.dp).clip(CircleShape).background(Color.White), contentAlignment = Alignment.Center) {
                         Icon(Icons.AutoMirrored.Outlined.ArrowForward, null, Modifier.size(22.dp), tint = red)
                     }
@@ -623,7 +643,8 @@ private fun Morph.Stage(position: Float, modifier: Modifier) {
     val ink = MaterialTheme.colorScheme.onSurface
     val accent = MaterialTheme.colorScheme.primary
     val phone = near(1); val qr = near(2); val server = near(3)
-    Box(modifier.semantics { if (qr > 0.9f) contentDescription = "QR code for $EASTER_EGG" }, contentAlignment = Alignment.Center) {
+    val qrDescription = stringResource(R.string.host_setup_qr_description, EASTER_EGG)
+    Box(modifier.semantics { if (qr > 0.9f) contentDescription = qrDescription }, contentAlignment = Alignment.Center) {
         Canvas(Modifier.fillMaxSize()) {
             val w = bodyWidth.dp.toPx(); val h = bodyHeight.dp.toPx()
             val topLeft = Offset((size.width - w) / 2, (size.height - h) / 2)
@@ -667,10 +688,11 @@ private fun Morph.Stage(position: Float, modifier: Modifier) {
 }
 
 @Composable
-private fun PageDots(position: Float, count: Int, modifier: Modifier, label: String = "Page") {
+private fun PageDots(position: Float, count: Int, modifier: Modifier, @StringRes label: Int = R.string.host_setup_page_position) {
+    val context = LocalContext.current
     val active = brandRed()
     val idle = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f)
-    Row(modifier.semantics { contentDescription = "$label ${(position + 0.5f).toInt() + 1} of $count" }, horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(modifier.semantics { contentDescription = context.getString(label, (position + 0.5f).toInt() + 1, count) }, horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
         repeat(count) { index ->
             val weight = (1f - abs(position - index)).coerceIn(0f, 1f)
             Box(Modifier.size(lerp(6.dp, 22.dp, weight), 6.dp).clip(CircleShape).background(lerp(idle, active, weight)))
@@ -700,12 +722,12 @@ internal fun HostIcon(kind: HostKind, modifier: Modifier = Modifier, size: Dp = 
 @Composable
 private fun Morph.ChoiceRows(phoneConfigured: Boolean, fill: Color, onPhone: () -> Unit, onRemote: () -> Unit, onExisting: () -> Unit) {
     Group(fill = fill) {
-        ChoiceRow({ HostIcon(HostKind.Phone, Modifier.element("mark-phone")) }, "Host on my phone",
-            if (phoneConfigured) "Already set up" else "Wi-Fi, hotspot or VPN", onPhone)
+        ChoiceRow({ HostIcon(HostKind.Phone, Modifier.element("mark-phone")) }, stringResource(R.string.host_setup_choice_phone),
+            stringResource(if (phoneConfigured) R.string.host_setup_choice_phone_done else R.string.host_setup_choice_phone_networks), onPhone)
         RowDivider()
-        ChoiceRow({ HostIcon(HostKind.Remote, Modifier.element("mark-remote")) }, "Host on a remote server", "SSH, DigitalOcean, AWS and more", onRemote)
+        ChoiceRow({ HostIcon(HostKind.Remote, Modifier.element("mark-remote")) }, stringResource(R.string.host_setup_choice_remote), stringResource(R.string.host_setup_choice_remote_detail), onRemote)
         RowDivider()
-        ChoiceRow({ HostIcon(HostKind.Existing, Modifier.element("mark-existing")) }, "I already run Madmail", "Admin address and key", onExisting)
+        ChoiceRow({ HostIcon(HostKind.Existing, Modifier.element("mark-existing")) }, stringResource(R.string.host_setup_choice_existing), stringResource(R.string.host_setup_choice_existing_detail), onExisting)
     }
 }
 
@@ -751,18 +773,18 @@ private fun Morph.StepPage(title: String, body: String, mark: @Composable () -> 
 
 @Composable
 private fun Morph.ProvidersStep(onPick: (RemoteProvider) -> Unit) {
-    StepPage("Where is your server?", "We’ll prefill the sign-in.", { HostIcon(HostKind.Remote, Modifier.element("mark-remote"), 56.dp) }) {
-        Caption("Your own")
-        Group { ChoiceRow({ ProviderMark(selfHosted, Modifier.element("mark-${selfHosted.id}")) }, selfHosted.name, selfHosted.note) { onPick(selfHosted) } }
+    StepPage(stringResource(R.string.host_setup_providers_title), stringResource(R.string.host_setup_providers_body), { HostIcon(HostKind.Remote, Modifier.element("mark-remote"), 56.dp) }) {
+        Caption(stringResource(R.string.host_setup_providers_own))
+        Group { ChoiceRow({ ProviderMark(selfHosted, Modifier.element("mark-${selfHosted.id}")) }, selfHosted.displayName(), stringResource(selfHosted.noteRes)) { onPick(selfHosted) } }
         Spacer(Modifier.height(24.dp))
-        Caption("Cloud providers")
+        Caption(stringResource(R.string.host_setup_providers_cloud))
         Group {
             cloudProviders.forEachIndexed { index, provider ->
                 if (index > 0) RowDivider()
-                ChoiceRow({ ProviderMark(provider, Modifier.element("mark-${provider.id}")) }, provider.name, provider.note) { onPick(provider) }
+                ChoiceRow({ ProviderMark(provider, Modifier.element("mark-${provider.id}")) }, provider.displayName(), stringResource(provider.noteRes)) { onPick(provider) }
             }
         }
-        Footer("Nothing is created or charged.")
+        Footer(stringResource(R.string.host_setup_providers_footer))
     }
 }
 
@@ -792,14 +814,14 @@ internal fun ProviderMark(provider: RemoteProvider, modifier: Modifier = Modifie
 @Composable
 private fun Morph.AddressStep(provider: RemoteProvider, host: String, port: String, advanced: Boolean, errors: List<String?>, fields: List<FocusRequester>,
     onHost: (String) -> Unit, onPort: (String) -> Unit, onAdvanced: () -> Unit, onDone: () -> Unit) {
-    StepPage("Server address", provider.hint, { ProviderMark(provider, Modifier.element("mark-${provider.id}"), 56.dp) }) {
-        Group { FieldRow("Address", host, onHost, "203.0.113.5", fields[0], fieldKeyboard(KeyboardType.Uri, ImeAction.Done), onDone, errors[0]) }
-        Footer("Pasting an SSH command works too.")
+    StepPage(stringResource(R.string.host_setup_address_title), stringResource(provider.hintRes), { ProviderMark(provider, Modifier.element("mark-${provider.id}"), 56.dp) }) {
+        Group { FieldRow(stringResource(R.string.host_setup_address_label), host, onHost, "203.0.113.5", fields[0], fieldKeyboard(KeyboardType.Uri, ImeAction.Done), onDone, errors[0]) }
+        Footer(stringResource(R.string.host_setup_address_footer))
         Spacer(Modifier.height(16.dp))
-        Disclosure("Advanced", advanced, onAdvanced)
+        Disclosure(stringResource(R.string.host_setup_advanced), advanced, onAdvanced)
         AnimatedVisibility(advanced, enter = fadeIn(tween(200, 60)) + expandVertically(tween(320, easing = Emphasized)),
             exit = fadeOut(tween(100)) + shrinkVertically(tween(260, easing = Emphasized))) {
-            Group { FieldRow("Port", port, onPort, "22", fields[2], fieldKeyboard(KeyboardType.Number, ImeAction.Done), onDone, errors[2]) }
+            Group { FieldRow(stringResource(R.string.host_setup_port_label), port, onPort, "22", fields[2], fieldKeyboard(KeyboardType.Number, ImeAction.Done), onDone, errors[2]) }
         }
     }
 }
@@ -807,19 +829,19 @@ private fun Morph.AddressStep(provider: RemoteProvider, host: String, port: Stri
 /** Step 3 of a remote server: the account to sign in as, prefilled from the provider. */
 @Composable
 private fun Morph.AccountStep(provider: RemoteProvider, user: String, error: String?, field: FocusRequester, onUser: (String) -> Unit, onDone: () -> Unit) {
-    StepPage("Sign in as", provider.userHint, { ProviderMark(provider, Modifier.element("mark-${provider.id}"), 56.dp) }, delay = 60) {
+    StepPage(stringResource(R.string.host_setup_sign_in_as), if (provider.userHintRes != 0) stringResource(provider.userHintRes) else "", { ProviderMark(provider, Modifier.element("mark-${provider.id}"), 56.dp) }, delay = 60) {
         Group {
-            FieldRow("Username", user, onUser, if (provider.id == "gcp") "your-username" else "root", field, fieldKeyboard(KeyboardType.Ascii, ImeAction.Done), onDone, error)
+            FieldRow(stringResource(R.string.host_setup_username_label), user, onUser, if (provider.id == "gcp") stringResource(R.string.host_setup_username_placeholder_gcp) else "root", field, fieldKeyboard(KeyboardType.Ascii, ImeAction.Done), onDone, error)
         }
-        Footer("Next, choose a key or password.")
+        Footer(stringResource(R.string.host_setup_account_footer))
     }
 }
 
 @Composable
 private fun Morph.ExistingStep(address: String, endpoint: String?, error: String?, field: FocusRequester, onAddress: (String) -> Unit, onDone: () -> Unit) {
-    StepPage("Connect your Madmail", "Its address, like mail.example.org.", { HostIcon(HostKind.Existing, Modifier.element("mark-existing"), 56.dp) }) {
-        Group { FieldRow("Address", address, onAddress, "mail.example.org", field, fieldKeyboard(KeyboardType.Uri, ImeAction.Done), onDone, error) }
-        if (error == null) endpoint?.let { Footer("Connects to $it") }
+    StepPage(stringResource(R.string.host_setup_connect_madmail), stringResource(R.string.host_setup_existing_body), { HostIcon(HostKind.Existing, Modifier.element("mark-existing"), 56.dp) }) {
+        Group { FieldRow(stringResource(R.string.host_setup_address_label), address, onAddress, "mail.example.org", field, fieldKeyboard(KeyboardType.Uri, ImeAction.Done), onDone, error) }
+        if (error == null) endpoint?.let { Footer(stringResource(R.string.host_setup_connects_to, it)) }
     }
 }
 
@@ -827,12 +849,12 @@ private fun Morph.ExistingStep(address: String, endpoint: String?, error: String
 private fun Morph.ApiKeyStep(key: String, saveError: String?, error: String?, field: FocusRequester, onKey: (String) -> Unit, onDone: () -> Unit) {
     var reveal by remember { mutableStateOf(false) }
     val clipboard = LocalClipboardManager.current
-    StepPage("Admin API key", "Stored encrypted on this phone.", { HostIcon(HostKind.Existing, Modifier.element("mark-existing"), 56.dp) }, delay = 60) {
+    StepPage(stringResource(R.string.host_setup_admin_api_key), stringResource(R.string.host_setup_api_stored), { HostIcon(HostKind.Existing, Modifier.element("mark-existing"), 56.dp) }, delay = 60) {
         Group {
-            FieldRow("Admin key", key, onKey, "Paste the key", field, fieldKeyboard(KeyboardType.Password, ImeAction.Done), onDone, error, secret = !reveal) {
-                if (key.isEmpty()) TextButton(onClick = { clipboard.getText()?.text?.let(onKey) }) { Text("Paste") }
+            FieldRow(stringResource(R.string.host_setup_admin_key_label), key, onKey, stringResource(R.string.host_setup_key_placeholder), field, fieldKeyboard(KeyboardType.Password, ImeAction.Done), onDone, error, secret = !reveal) {
+                if (key.isEmpty()) TextButton(onClick = { clipboard.getText()?.text?.let(onKey) }) { Text(stringResource(R.string.host_setup_paste)) }
                 else IconButton(onClick = { reveal = !reveal }) {
-                    Icon(if (reveal) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, if (reveal) "Hide key" else "Show key",
+                    Icon(if (reveal) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, stringResource(if (reveal) R.string.host_setup_hide_key else R.string.host_setup_show_key),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
@@ -845,7 +867,8 @@ private fun Morph.ApiKeyStep(key: String, saveError: String?, error: String?, fi
 @Composable
 private fun Disclosure(label: String, open: Boolean, onToggle: () -> Unit) {
     val turn by animateFloatAsState(if (open) 180f else 0f, tween(260, easing = Emphasized), label = "Disclosure")
-    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable(onClickLabel = if (open) "Hide $label" else "Show $label", role = Role.Button, onClick = rememberTap(onToggle))
+    val clickLabel = stringResource(if (open) R.string.host_setup_hide_section else R.string.host_setup_show_section, label)
+    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable(onClickLabel = clickLabel, role = Role.Button, onClick = rememberTap(onToggle))
         .heightIn(min = 44.dp).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(label.uppercase(), style = MaterialTheme.typography.labelMedium, letterSpacing = 0.6.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Icon(Icons.Rounded.KeyboardArrowDown, null, Modifier.size(18.dp).rotate(turn), tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -855,56 +878,56 @@ private fun Disclosure(label: String, open: Boolean, onToggle: () -> Unit) {
 @Composable
 private fun Morph.PhoneStep(name: String, field: FocusRequester, onName: (String) -> Unit, onDone: () -> Unit) {
     val access = rememberBackgroundAccess()
-    StepPage("Make this phone your server", "Guests connect from their own phones.", { HostIcon(HostKind.Phone, Modifier.element("mark-phone"), 56.dp) }) {
+    StepPage(stringResource(R.string.host_setup_phone_title), stringResource(R.string.host_setup_phone_body), { HostIcon(HostKind.Phone, Modifier.element("mark-phone"), 56.dp) }) {
         Group {
-            FieldRow("Name", name, onName, "This phone", field, fieldKeyboard(KeyboardType.Text, ImeAction.Done, KeyboardCapitalization.Words), onDone,
+            FieldRow(stringResource(R.string.host_setup_name_label), name, onName, stringResource(R.string.host_setup_name_placeholder), field, fieldKeyboard(KeyboardType.Text, ImeAction.Done, KeyboardCapitalization.Words), onDone,
                 trailing = if (name.isEmpty()) null else ({
-                    IconButton(onClick = { onName("") }) { Icon(Icons.Rounded.Cancel, "Clear name", Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)) }
+                    IconButton(onClick = { onName("") }) { Icon(Icons.Rounded.Cancel, stringResource(R.string.host_setup_clear_name), Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)) }
                 }))
         }
-        Footer("Only shown in this app.")
+        Footer(stringResource(R.string.host_setup_name_footer))
         Spacer(Modifier.height(24.dp))
-        Caption("Before you start")
+        Caption(stringResource(R.string.host_setup_before_start))
         Group {
             val networks by rememberGuestNetworks()
             val shared = networks?.firstOrNull()
             val context = LocalContext.current
             // Read live, so joining Wi-Fi from the panel turns the row green without leaving the step.
-            InfoRow(if (networks?.isEmpty() == true) Tint.Orange else Tint.Blue, if (networks?.isEmpty() == true) Icons.Rounded.WifiOff else Icons.Rounded.Wifi, "Share a network",
+            InfoRow(if (networks?.isEmpty() == true) Tint.Orange else Tint.Blue, if (networks?.isEmpty() == true) Icons.Rounded.WifiOff else Icons.Rounded.Wifi, stringResource(R.string.host_setup_share_network),
                 when {
-                    shared?.network == GuestNetwork.Mobile -> "On mobile data. Works where your carrier lets guests reach this phone."
-                    shared != null -> "On ${shared.network.label}. Guests join the same one."
-                    networks == null -> "Same Wi-Fi, hotspot or VPN as guests, or mobile data."
-                    else -> "No network. Join Wi-Fi, a hotspot or a VPN, or turn on mobile data."
+                    shared?.network == GuestNetwork.Mobile -> stringResource(R.string.host_setup_net_mobile)
+                    shared != null -> stringResource(R.string.host_setup_net_named, shared.network.label)
+                    networks == null -> stringResource(R.string.host_setup_net_unknown)
+                    else -> stringResource(R.string.host_setup_net_none)
                 }) {
                 Crossfade(networks?.isNotEmpty(), label = "Network status") { connected ->
                     when (connected) {
                         true -> Row(Modifier.semantics(mergeDescendants = true) {}, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             Icon(Icons.Rounded.CheckCircle, null, Modifier.size(16.dp), tint = Success)
-                            Text("Connected", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(stringResource(R.string.host_setup_connected), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         false -> Box(Modifier.minimumInteractiveComponentSize().clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer)
                             .clickable(role = Role.Button, onClick = { context.openWifiSettings() }).padding(horizontal = 14.dp, vertical = 7.dp)) {
-                            Text("Wi-Fi", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimaryContainer, fontWeight = FontWeight.SemiBold)
+                            Text(stringResource(R.string.host_setup_wifi), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimaryContainer, fontWeight = FontWeight.SemiBold)
                         }
                         null -> Unit
                     }
                 }
             }
             RowDivider(64.dp)
-            InfoRow(Tint.Green, Icons.Rounded.BatteryFull, "Keep it running",
-                if (access.allowed) "Stays reachable with the screen off." else "Lets guests reach it with the screen off. Uses more battery.") {
+            InfoRow(Tint.Green, Icons.Rounded.BatteryFull, stringResource(R.string.host_setup_keep_running),
+                stringResource(if (access.allowed) R.string.host_setup_keep_on else R.string.host_setup_keep_off)) {
                 if (access.allowed) Row(Modifier.semantics(mergeDescendants = true) {}, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     Icon(Icons.Rounded.CheckCircle, null, Modifier.size(16.dp), tint = Color(0xFF14A05A))
-                    Text("Allowed", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.host_setup_allowed), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else Box(Modifier.minimumInteractiveComponentSize().clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer)
                     .clickable(role = Role.Button, onClick = access.request).padding(horizontal = 14.dp, vertical = 7.dp)) {
-                    Text("Allow", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimaryContainer, fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.host_setup_allow), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimaryContainer, fontWeight = FontWeight.SemiBold)
                 }
             }
         }
         access.error?.let { Footer(it, MaterialTheme.colorScheme.error) }
-        Footer("Start hosting from Home.")
+        Footer(stringResource(R.string.host_setup_start_footer))
     }
 }
 
