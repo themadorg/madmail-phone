@@ -396,7 +396,7 @@ internal fun RegistrationScreen(serverId: String, serverName: String, remote: Re
 /** A selectable row with a check, for one-of-many choices inside a group. */
 @Composable
 private fun InviteCheckRow(title: String, detail: String?, selected: Boolean, enabled: Boolean, mark: (@Composable () -> Unit)? = null, onClick: () -> Unit) {
-    Row(Modifier.fillMaxWidth().selectable(selected, enabled, Role.RadioButton, onClick).heightIn(min = if (mark != null) 68.dp else 52.dp)
+    Row(Modifier.fillMaxWidth().selectable(selected = selected, enabled = enabled, role = Role.RadioButton, onClick = onClick).heightIn(min = if (mark != null) 68.dp else 52.dp)
         .padding(start = if (mark != null) 14.dp else 16.dp, end = 16.dp, top = 10.dp, bottom = 10.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         mark?.invoke()
