@@ -83,6 +83,7 @@ private data class Invitation(val token: String, val name: String, val used: Int
 @Composable
 internal fun RegistrationScreen(serverId: String, serverName: String, remote: RemoteServer?, initialEndpoint: String, onEndpointChange: (String) -> Unit) {
     val context = LocalContext.current
+    val resources = androidx.compose.ui.platform.LocalResources.current
     val colors = MaterialTheme.colorScheme
     val scope = rememberCoroutineScope()
     val toaster = LocalToaster.current
@@ -122,7 +123,7 @@ internal fun RegistrationScreen(serverId: String, serverName: String, remote: Re
     }
     fun select(value: String) { code = value; onEndpointChange(value) }
     LaunchedEffect(creationState.code) {
-        creationState.code?.let { rotation.stop(); select(it); creation.consume(); create = false; refresh++; toaster.show(context.getString(R.string.screen_invitation_created)) }
+        creationState.code?.let { rotation.stop(); select(it); creation.consume(); create = false; refresh++; toaster.show(resources.getString(R.string.screen_invitation_created)) }
     }
     LaunchedEffect(copied) { if (copied) { delay(1800); copied = false } }
     // A new account QR every few seconds, only while the code is in view: page on screen, no sheet over it, app in front, server ready.
@@ -138,11 +139,11 @@ internal fun RegistrationScreen(serverId: String, serverName: String, remote: Re
                 val array = request("GET").getJSONArray("tokens")
                 val rotated = rotation.tokens()
                 invitations = (0 until array.length()).map { array.getJSONObject(it) }.filter { it.getString("token") !in rotated }.map {
-                    Invitation(it.getString("token"), it.optString("comment").ifBlank { context.getString(R.string.screen_invitation) }, it.optInt("used_count"), it.optInt("pending_reservations"), it.getInt("max_uses"), it.getString("status"), it.optString("expires_at").takeUnless { s -> s.isBlank() || s == "null" })
+                    Invitation(it.getString("token"), it.optString("comment").ifBlank { resources.getString(R.string.screen_invitation) }, it.optInt("used_count"), it.optInt("pending_reservations"), it.getInt("max_uses"), it.getString("status"), it.optString("expires_at").takeUnless { s -> s.isBlank() || s == "null" })
                 }
                 loaded = true
             } catch (e: CancellationException) { throw e }
-            catch (_: Exception) { error = context.getString(R.string.screen_load_invitations_failed); break }
+            catch (_: Exception) { error = resources.getString(R.string.screen_load_invitations_failed); break }
             delay(30000)
         } while (isActive)
     }
@@ -193,7 +194,7 @@ internal fun RegistrationScreen(serverId: String, serverName: String, remote: Re
                     }, Modifier.weight(1f), icon = if (copied) Icons.Rounded.Check else Icons.Rounded.ContentCopy, filled = true, wide = true)
                     PillButton(stringResource(R.string.screen_share), onClick = {
                         handOut()
-                        context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, shown) }, context.getString(R.string.screen_share_invitation)))
+                        context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, shown) }, resources.getString(R.string.screen_share_invitation)))
                     }, Modifier.weight(1f), icon = Icons.Rounded.Share, wide = true)
                 }
                 Group {
@@ -201,13 +202,13 @@ internal fun RegistrationScreen(serverId: String, serverName: String, remote: Re
                         ActionRow(stringResource(R.string.screen_open_delta), onClick = {
                             handOut()
                             runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(shown))) }
-                                .onFailure { toaster.show(context.getString(R.string.screen_install_delta), error = true) }
+                                .onFailure { toaster.show(resources.getString(R.string.screen_install_delta), error = true) }
                         }, icon = Icons.AutoMirrored.Rounded.OpenInNew)
                         RowDivider(48.dp)
                     }
                     ActionRow(stringResource(R.string.screen_enlarge), onClick = { large = true }, icon = Icons.Rounded.Fullscreen)
                     RowDivider(48.dp)
-                    ActionRow(stringResource(R.string.screen_share_qr_image), onClick = { handOut(); runCatching { shareInvitationImage(context, bitmap) }.onFailure { toaster.show(context.getString(R.string.screen_qr_share_failed), error = true) } }, icon = Icons.Rounded.Image)
+                    ActionRow(stringResource(R.string.screen_share_qr_image), onClick = { handOut(); runCatching { shareInvitationImage(context, bitmap) }.onFailure { toaster.show(resources.getString(R.string.screen_qr_share_failed), error = true) } }, icon = Icons.Rounded.Image)
                     RowDivider(48.dp)
                     ActionRow(if (personal) stringResource(R.string.screen_stop) else stringResource(R.string.screen_hide), onClick = { if (personal) rotation.stop() else select("") }, icon = Icons.Rounded.VisibilityOff)
                 }
@@ -264,15 +265,15 @@ internal fun RegistrationScreen(serverId: String, serverName: String, remote: Re
     if (editAddress) GuestAddressSheet(origin, remote, onDismiss = { editAddress = false }) { updated ->
         origin = updated; prefs.edit().putString("origin", origin).apply()
         if (personal) rotation.retarget(updated) else select(selected?.let { InviteLinks.invite(updated, it.token) }.orEmpty())
-        editAddress = false; toaster.show(context.getString(R.string.screen_address_updated))
+        editAddress = false; toaster.show(resources.getString(R.string.screen_address_updated))
         // New accounts take this IP as their domain, so the phone server restarts onto it when it changed.
         val host = java.net.URI(updated).host
         if (phone && GuestAddresses.ipv4(host)) scope.launch(Dispatchers.IO) {
             val before = local.mailHost
             runCatching { local.useMailHost(host) }
-                .onSuccess { switched -> if (!switched) error = context.getString(R.string.screen_switch_failed, host)
-                    else if (before != host && local.mailHost == host) toaster.show(context.getString(R.string.screen_hosting_restarted, host)) }
-                .onFailure { error = it.message ?: context.getString(R.string.screen_restart_failed) }
+                .onSuccess { switched -> if (!switched) error = resources.getString(R.string.screen_switch_failed, host)
+                    else if (before != host && local.mailHost == host) toaster.show(resources.getString(R.string.screen_hosting_restarted, host)) }
+                .onFailure { error = it.message ?: resources.getString(R.string.screen_restart_failed) }
         }
     }
     if (create) {
@@ -373,9 +374,9 @@ internal fun RegistrationScreen(serverId: String, serverName: String, remote: Re
                 try {
                     request("DELETE", JSONObject().put("token", invitation.token))
                     if (selected?.token == invitation.token) select("")
-                    toaster.show(context.getString(R.string.screen_invitation_revoked)); revoke = null; refresh++
+                    toaster.show(resources.getString(R.string.screen_invitation_revoked)); revoke = null; refresh++
                 } catch (e: CancellationException) { throw e }
-                catch (_: Exception) { error = context.getString(R.string.screen_revoke_unconfirmed); revoke = null; refresh++ }
+                catch (_: Exception) { error = resources.getString(R.string.screen_revoke_unconfirmed); revoke = null; refresh++ }
                 finally { revoking = false }
             }
         }) { Text(stringResource(R.string.screen_revoke), color = colors.error, fontWeight = FontWeight.SemiBold) }

@@ -85,9 +85,10 @@ internal fun ServerPicker(selectedId: String, remotes: List<RemoteServer>, ident
     var editMode by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
     val context = androidx.compose.ui.platform.LocalContext.current
+    val resources = androidx.compose.ui.platform.LocalResources.current
     val entries = (if (phoneConfigured) listOf(Triple("phone", stringResource(R.string.remote_this_phone), stringResource(R.string.remote_on_this_device))) else emptyList()) + remotes.map {
         val options = context.getSharedPreferences("remote-options-${it.id}", android.content.Context.MODE_PRIVATE)
-        Triple(it.id, it.host, if (options.getString("preferred", "ssh") == "api") context.getString(R.string.remote_transport_api, it.host) else it.address)
+        Triple(it.id, it.host, if (options.getString("preferred", "ssh") == "api") resources.getString(R.string.remote_transport_api, it.host) else it.address)
     }
     SideEffect { onEditing(editing != null) }
     DisposableEffect(Unit) { onDispose { onEditing(false) } }
@@ -131,8 +132,8 @@ internal fun ServerPicker(selectedId: String, remotes: List<RemoteServer>, ident
                                     add(MenuAction(stringResource(R.string.remote_name_and_icon), Icons.Rounded.Edit) { editing = id })
                                     add(MenuAction(stringResource(R.string.remote_copy_address), Icons.Rounded.ContentCopy) {
                                         val origin = if (id == "phone") localInviteOrigin(context) else fallback
-                                        if (origin.isBlank()) toaster.show(context.getString(R.string.remote_no_shared_network), error = true)
-                                        else { clipboard.setText(AnnotatedString(origin)); toaster.show(context.getString(R.string.remote_address_copied)) }
+                                        if (origin.isBlank()) toaster.show(resources.getString(R.string.remote_no_shared_network), error = true)
+                                        else { clipboard.setText(AnnotatedString(origin)); toaster.show(resources.getString(R.string.remote_address_copied)) }
                                     })
                                     if (id != "phone") add(MenuAction(stringResource(R.string.remote_remove_server), Icons.Rounded.Delete, destructive = true) { removing = id })
                                 }, onDismiss = { peek = null }) {

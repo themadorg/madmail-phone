@@ -33,10 +33,12 @@ import org.madmail.mobile.engine.*
 @Composable
 internal fun GuestAddressSheet(origin: String, remote: RemoteServer?, onDismiss: () -> Unit, onSave: (String) -> Unit) {
     val context = LocalContext.current
+    val resources = androidx.compose.ui.platform.LocalResources.current
     val scope = rememberCoroutineScope()
     val focus = LocalFocusManager.current
     val field = remember { FocusRequester() }
-    val apiOnly = remote?.let { RemoteEngine.get(context, it).state.value.transport == "API" } == true
+    val remoteState = remember(remote) { remote?.let { RemoteEngine.get(context, it).state } }?.collectAsState()
+    val apiOnly = remoteState?.value?.transport == "API"
     var draft by remember { mutableStateOf(origin) }
     var addresses by remember { mutableStateOf<List<GuestAddress>>(emptyList()) }
     var loading by remember { mutableStateOf(false) }
@@ -49,10 +51,10 @@ internal fun GuestAddressSheet(origin: String, remote: RemoteServer?, onDismiss:
         loading = true; readError = null
         try { addresses = withContext(Dispatchers.IO) { if (remote == null) GuestNetworks.phone(context) else if (apiOnly) emptyList() else RemoteEngine.get(context, remote).guestAddresses() } }
         catch (e: CancellationException) { throw e }
-        catch (_: Exception) { readError = context.getString(R.string.remote_error_read_addresses) }
+        catch (_: Exception) { readError = resources.getString(R.string.remote_error_read_addresses) }
         finally { loading = false }
     }
-    fun choose(value: String) { draft = value; checks = null; feedback = context.getString(R.string.remote_save_to_update_qr) }
+    fun choose(value: String) { draft = value; checks = null; feedback = resources.getString(R.string.remote_save_to_update_qr) }
     val server = remote?.let { RemoteEngine.get(context, it).guestOrigin ?: GuestAddresses.origin(it.host) }
     KitSheet(onDismiss = onDismiss) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {

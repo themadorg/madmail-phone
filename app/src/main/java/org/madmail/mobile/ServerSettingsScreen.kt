@@ -70,6 +70,7 @@ private val settingsSections = listOf(
 @Composable
 internal fun ServerSettingsScreen(serverId: String, serverName: String, remote: RemoteServer?, initiallyShowHosting: Boolean = false, onNavigate: () -> Unit = {}, onRemove: () -> Unit) {
     val context = LocalContext.current
+    val resources = androidx.compose.ui.platform.LocalResources.current
     val colors = MaterialTheme.colorScheme
     val controller = remember(serverId) { SettingsController.get(context, serverId, remote) }
     val state by controller.state.collectAsState()
@@ -195,7 +196,7 @@ internal fun ServerSettingsScreen(serverId: String, serverName: String, remote: 
                                 }
                             }
                             if (rows.length() == 0) Group { InfoRow(Tint.Orange, Icons.Rounded.Group, stringResource(R.string.screen_no_accounts_yet), stringResource(R.string.screen_create_one_invite)) }
-                            else Section(context.resources.getQuantityString(R.plurals.screen_accounts_count, rows.length(), NumberFormat.getIntegerInstance().format(rows.length())),
+                            else Section(resources.getQuantityString(R.plurals.screen_accounts_count, rows.length(), NumberFormat.getIntegerInstance().format(rows.length())),
                                 footer = stringResource(R.string.screen_legacy_accounts)
                                     .takeIf { (0 until rows.length()).any { rows.getJSONObject(it).optString("username").endsWith("@madmail.local", ignoreCase = true) } }) {
                                 for (i in 0 until rows.length()) {
@@ -285,7 +286,7 @@ internal fun ServerSettingsScreen(serverId: String, serverName: String, remote: 
         onConfirm = { SettingsController.forget(serverId); onRemove() }, onDismiss = { remove = false })
     if (deleteAccount && account != null) KitDialog(stringResource(R.string.screen_delete_account_title), stringResource(R.string.screen_delete_account_body, account!!.getString("username")), stringResource(R.string.screen_delete),
         onConfirm = {
-            controller.mutate("/admin/accounts", "DELETE", JSONObject().put("username", account!!.getString("username")), success = context.getString(R.string.screen_account_deleted), refreshAccounts = true)
+            controller.mutate("/admin/accounts", "DELETE", JSONObject().put("username", account!!.getString("username")), success = resources.getString(R.string.screen_account_deleted), refreshAccounts = true)
             deleteAccount = false; navigate("accounts")
         }, onDismiss = { deleteAccount = false })
     quotaTarget?.let { username ->
@@ -293,7 +294,7 @@ internal fun ServerSettingsScreen(serverId: String, serverName: String, remote: 
         val amount = draft.toLongOrNull()?.takeIf { it in 1..(Long.MAX_VALUE / (1024 * 1024)) }
         val focus = remember { FocusRequester() }
         fun save() {
-            controller.mutate("/admin/quota", "PUT", JSONObject().put("max_bytes", amount!! * 1024 * 1024).apply { if (username.isNotEmpty()) put("username", username) }, success = context.getString(R.string.screen_quota_saved), refreshAccounts = true)
+            controller.mutate("/admin/quota", "PUT", JSONObject().put("max_bytes", amount!! * 1024 * 1024).apply { if (username.isNotEmpty()) put("username", username) }, success = resources.getString(R.string.screen_quota_saved), refreshAccounts = true)
             quotaTarget = null
         }
         KitDialog(if (username.isEmpty()) stringResource(R.string.screen_default_storage_quota) else stringResource(R.string.screen_account_quota), null, stringResource(R.string.screen_save), confirmEnabled = amount != null, onConfirm = ::save, onDismiss = { quotaTarget = null }) {

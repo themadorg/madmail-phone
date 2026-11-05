@@ -82,6 +82,7 @@ private data class LegAction(val label: String, val ready: Boolean, val run: () 
 @Composable
 internal fun RemoteConnectionSheet(server: RemoteServer, engine: RemoteEngine, onClose: () -> Unit) {
     val context = LocalContext.current
+    val resources = androidx.compose.ui.platform.LocalResources.current
     val scope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
     val toaster = LocalToaster.current
@@ -105,7 +106,7 @@ internal fun RemoteConnectionSheet(server: RemoteServer, engine: RemoteEngine, o
     var customToken by remember { mutableStateOf(false) }
     var advanced by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
-    var busyLabel by remember { mutableStateOf(context.getString(R.string.remote_working)) }
+    var busyLabel by remember { mutableStateOf(resources.getString(R.string.remote_working)) }
     var inspected by remember { mutableStateOf(false) }
     var accepted by remember { mutableStateOf(engine.trusted) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -129,40 +130,40 @@ internal fun RemoteConnectionSheet(server: RemoteServer, engine: RemoteEngine, o
     fun go(next: RemoteLeg) = show(next, push = true)
     fun back() { if (history.isNotEmpty() && !busy) show(history.removeAt(history.lastIndex), push = false) }
     fun afterSignIn() = go(if (accepted) RemoteLeg.Connect else RemoteLeg.Verify)
-    fun runAction(label: String = context.getString(R.string.remote_working), block: suspend () -> Unit) {
+    fun runAction(label: String = resources.getString(R.string.remote_working), block: suspend () -> Unit) {
         busy = true; busyLabel = label; error = null
         scope.launch {
             try { block() }
             catch (e: CancellationException) { throw e }
-            catch (_: Exception) { error = context.getString(R.string.remote_error_finish) }
+            catch (_: Exception) { error = resources.getString(R.string.remote_error_finish) }
             finally { busy = false }
         }
     }
-    fun generateKey() = runAction(context.getString(R.string.remote_generating_key)) {
+    fun generateKey() = runAction(resources.getString(R.string.remote_generating_key)) {
         publicKey = withContext(Dispatchers.IO) { vault.generate() }
-        toaster.show(context.getString(R.string.remote_key_generated))
+        toaster.show(resources.getString(R.string.remote_key_generated))
         go(RemoteLeg.AddKey)
     }
-    fun saveKey() = runAction(context.getString(R.string.remote_saving_key)) {
+    fun saveKey() = runAction(resources.getString(R.string.remote_saving_key)) {
         val bytes = privateKey.toByteArray(); val phrase = passphrase.toByteArray()
         try { publicKey = withContext(Dispatchers.IO) { vault.importKey(bytes, phrase) }; privateKey = ""; passphrase = ""; method = "key" }
         finally { bytes.fill(0); phrase.fill(0) }
-        toaster.show(context.getString(R.string.remote_key_saved))
+        toaster.show(resources.getString(R.string.remote_key_saved))
         afterSignIn()
     }
     val importFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) runAction(context.getString(R.string.remote_loading_key)) {
+        if (uri != null) runAction(resources.getString(R.string.remote_loading_key)) {
             privateKey = withContext(Dispatchers.IO) { context.contentResolver.openInputStream(uri)!!.use { String(it.readBytesLimited(65536)) } }
-            toaster.show(context.getString(R.string.remote_key_loaded))
+            toaster.show(resources.getString(R.string.remote_key_loaded))
         }
     }
-    fun verifyHost() = runAction(context.getString(R.string.remote_checking_server)) { try { withContext(Dispatchers.IO) { engine.inspectHost() }; inspected = true } catch (e: Exception) { if (e is CancellationException) throw e; error = e.message ?: context.getString(R.string.remote_error_verify_host) } }
-    fun trustHost() = runAction(context.getString(R.string.remote_trusting_host)) { engine.acceptHost(); accepted = true; go(RemoteLeg.Connect) }
-    fun connect() = runAction(context.getString(R.string.remote_connecting)) {
+    fun verifyHost() = runAction(resources.getString(R.string.remote_checking_server)) { try { withContext(Dispatchers.IO) { engine.inspectHost() }; inspected = true } catch (e: Exception) { if (e is CancellationException) throw e; error = e.message ?: resources.getString(R.string.remote_error_verify_host) } }
+    fun trustHost() = runAction(resources.getString(R.string.remote_trusting_host)) { engine.acceptHost(); accepted = true; go(RemoteLeg.Connect) }
+    fun connect() = runAction(resources.getString(R.string.remote_connecting)) {
         // A host trusted earlier is still checked first, so a changed key is reported as such rather than as a failed sign-in.
         if (!apiMode && !inspected) {
             try { withContext(Dispatchers.IO) { engine.inspectHost() }; inspected = true }
-            catch (e: Exception) { if (e is CancellationException) throw e; error = e.message ?: context.getString(R.string.remote_error_verify_host); return@runAction }
+            catch (e: Exception) { if (e is CancellationException) throw e; error = e.message ?: resources.getString(R.string.remote_error_verify_host); return@runAction }
         }
         withContext(Dispatchers.IO) {
             if (apiMode) {
@@ -182,19 +183,19 @@ internal fun RemoteConnectionSheet(server: RemoteServer, engine: RemoteEngine, o
             options.edit().putString("preferred", if (apiMode) "api" else "ssh").apply { if (apiMode) putString("api-endpoint", ApiEndpoint.normalize(endpoint)) }.apply(); password = ""; token = ""
             forward = true; history.clear(); leg = RemoteLeg.Done
         }
-        else error = engine.state.value.error ?: context.getString(R.string.remote_error_connect)
+        else error = engine.state.value.error ?: resources.getString(R.string.remote_error_connect)
     }
     fun copyKey() {
         (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("Madmail SSH public key", publicKey))
-        toaster.show(context.getString(R.string.remote_key_copied))
+        toaster.show(resources.getString(R.string.remote_key_copied))
     }
     fun shareKey() {
         val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, publicKey)
-        runCatching { context.startActivity(Intent.createChooser(send, context.getString(R.string.remote_share_public_key))) }.onFailure { toaster.show(context.getString(R.string.remote_error_share), error = true) }
+        runCatching { context.startActivity(Intent.createChooser(send, resources.getString(R.string.remote_share_public_key))) }.onFailure { toaster.show(resources.getString(R.string.remote_error_share), error = true) }
     }
     LaunchedEffect(server.id) {
         try { withContext(Dispatchers.IO) { publicKey = vault.publicKey(); hasSavedTunnel = vault.tunnelToken() != null; vault.api()?.let { endpoint = it.endpoint; savedApiEndpoint = it.endpoint; hasSavedApi = true } } }
-        catch (_: Exception) { error = context.getString(R.string.remote_error_unlock) }
+        catch (_: Exception) { error = resources.getString(R.string.remote_error_unlock) }
         // Open on the first thing still missing: a known server with saved sign-in goes straight to Connect.
         leg = when {
             apiMode -> if (hasSavedApi && ApiEndpoint.normalize(endpoint) == savedApiEndpoint) RemoteLeg.Connect else RemoteLeg.ApiAddress

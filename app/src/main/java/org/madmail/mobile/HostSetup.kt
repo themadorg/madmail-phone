@@ -690,9 +690,10 @@ private fun Morph.Stage(position: Float, modifier: Modifier) {
 @Composable
 private fun PageDots(position: Float, count: Int, modifier: Modifier, @StringRes label: Int = R.string.host_setup_page_position) {
     val context = LocalContext.current
+    val resources = androidx.compose.ui.platform.LocalResources.current
     val active = brandRed()
     val idle = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f)
-    Row(modifier.semantics { contentDescription = context.getString(label, (position + 0.5f).toInt() + 1, count) }, horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(modifier.semantics { contentDescription = resources.getString(label, (position + 0.5f).toInt() + 1, count) }, horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
         repeat(count) { index ->
             val weight = (1f - abs(position - index)).coerceIn(0f, 1f)
             Box(Modifier.size(lerp(6.dp, 22.dp, weight), 6.dp).clip(CircleShape).background(lerp(idle, active, weight)))

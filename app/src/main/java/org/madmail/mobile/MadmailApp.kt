@@ -69,6 +69,7 @@ internal fun MadmailApp() {
     var replayIntro by remember { mutableStateOf(false) }
     LaunchedEffect(setup) { if (!setup) replayIntro = false }
     val context = LocalContext.current
+    val resources = androidx.compose.ui.platform.LocalResources.current
     val thisPhone = stringResource(R.string.common_this_phone)
     val scope = rememberCoroutineScope()
     val profiles = remember { ServerProfiles(context) }
@@ -126,7 +127,7 @@ internal fun MadmailApp() {
                         val saved = profiles.save(host, user, port)
                         // Stored encrypted; the connection sheet reuses it when the endpoint matches. A failed write leaves no half-saved server.
                         if (apiEndpoint != null && apiKey != null) runCatching { org.madmail.mobile.engine.RemoteCredentials(context, saved.id).saveApi(apiEndpoint, apiKey) }
-                            .onFailure { if (!existed) profiles.remove(saved.id); return@HostSetup context.getString(R.string.common_error_save_key) }
+                            .onFailure { if (!existed) profiles.remove(saved.id); return@HostSetup resources.getString(R.string.common_error_save_key) }
                         context.getSharedPreferences("remote-options-${saved.id}", android.content.Context.MODE_PRIVATE).edit().putString("preferred", if (apiEndpoint == null) "ssh" else "api").apply { if (apiEndpoint != null) putString("api-endpoint", apiEndpoint) }.apply()
                         // Verification and sign-in follow straight on instead of leaving the user on an unconnected Overview.
                         PendingConnect.request(saved.id)
@@ -188,7 +189,7 @@ internal fun MadmailApp() {
             identityStore.save(id, updated)
             identities = identities + (id to updated)
         }, onEditing = { editingServer = it }, onOpen = { id, target -> selectServer(id); page = target; openHostingPreferences = false; chooseServer = false },
-            onRemove = { removeServer(it); toaster.show(context.getString(R.string.common_server_removed)); if (selectedId.isBlank()) chooseServer = false })
+            onRemove = { removeServer(it); toaster.show(resources.getString(R.string.common_server_removed)); if (selectedId.isBlank()) chooseServer = false })
     }
     if (debug) KitSheet(onDismiss = { debug = false }) { DebugMenu(serverId, remote) { debug = false; replayIntro = true; setup = true } }
 }
