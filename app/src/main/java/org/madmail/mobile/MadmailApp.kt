@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.core.content.edit
 import dev.chrisbanes.haze.*
+import dev.chrisbanes.haze.blur.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -199,11 +200,17 @@ private fun GlassDock(haze: HazeState, page: Int, serverName: String, serverMark
     val colors = MaterialTheme.colorScheme
     val dark = isSystemInDarkTheme()
     val haptics = LocalHapticFeedback.current
-    val glass = HazeStyle(backgroundColor = colors.surface, tint = HazeTint(colors.surface.copy(alpha = .78f)), blurRadius = 24.dp, noiseFactor = .015f, fallbackTint = HazeTint(colors.surface.copy(alpha = .97f)))
+    val glass = HazeBlurStyle {
+        backgroundColor(colors.surface)
+        colorEffects(listOf(HazeColorEffect.tint(colors.surface.copy(alpha = .78f))))
+        blurRadius(24.dp)
+        noiseFactor(.015f)
+        fallbackColorEffect(HazeColorEffect.tint(colors.surface.copy(alpha = .97f)))
+    }
     val edge = Brush.verticalGradient(listOf(Color.White.copy(alpha = if (dark) .30f else .85f), colors.outline.copy(alpha = .12f)))
     Row(modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        BoxWithConstraints(Modifier.weight(1f).height(DockHeight).clip(CircleShape).hazeEffect(haze, glass).border(1.dp, edge, CircleShape).padding(5.dp)) {
+        BoxWithConstraints(Modifier.weight(1f).height(DockHeight).clip(CircleShape).hazeBlur(HazeInput.Sources(haze), glass).border(1.dp, edge, CircleShape).padding(5.dp)) {
             val tab = maxWidth / DockTabs.size
             // One lozenge travels between tabs, so a tab change reads as movement instead of two fades.
             val slide by animateDpAsState(tab * page, spring(dampingRatio = 0.78f, stiffness = 420f), label = "Dock indicator")
@@ -254,7 +261,7 @@ private fun RowScope.DockTab(item: DockItem, active: Boolean, onClick: () -> Uni
 
 /** The current server's mark, as tall as the tabs. Its dot shows whether the server is up; tapping it switches or adds servers. */
 @Composable
-private fun DockServer(haze: HazeState, glass: HazeStyle, edge: Brush, name: String, mark: String, phone: Boolean, power: PowerPhase, onClick: () -> Unit) {
+private fun DockServer(haze: HazeState, glass: HazeBlurStyle, edge: Brush, name: String, mark: String, phone: Boolean, power: PowerPhase, onClick: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     val source = remember { MutableInteractionSource() }
     val status = stringResource(when (power) { PowerPhase.On -> R.string.common_dock_status_live; PowerPhase.Starting -> R.string.common_dock_status_starting; PowerPhase.Stopping -> R.string.common_dock_status_stopping
@@ -264,7 +271,7 @@ private fun DockServer(haze: HazeState, glass: HazeStyle, edge: Brush, name: Str
         PowerPhase.On -> Success; PowerPhase.Failed -> colors.error; PowerPhase.Starting, PowerPhase.Stopping -> Success.copy(alpha = .45f); PowerPhase.Off -> colors.outline
     }, tween(280, easing = Emphasized), label = "Server state")
     Box(Modifier.size(DockHeight).pressScale(source, 0.92f)) {
-        Box(Modifier.matchParentSize().clip(CircleShape).hazeEffect(haze, glass).border(1.dp, edge, CircleShape)
+        Box(Modifier.matchParentSize().clip(CircleShape).hazeBlur(HazeInput.Sources(haze), glass).border(1.dp, edge, CircleShape)
             .clickable(source, ripple(), role = Role.Button, onClickLabel = stringResource(R.string.common_switch_server), onClick = rememberTap(onClick))
             .semantics { contentDescription = description }, contentAlignment = Alignment.Center) {
             ServerMark(mark, phone, size = 38.dp)
