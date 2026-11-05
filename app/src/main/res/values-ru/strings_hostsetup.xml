@@ -124,4 +124,15 @@
     <string name="host_setup_oracle_user">Для Ubuntu — ubuntu, для Oracle Linux — opc.</string>
     <string name="host_setup_oracle_key">Добавьте его в ~/.ssh/authorized_keys через Cloud Shell или консоль.</string>
     <string name="host_setup_key_hint_default">Добавьте его в ~/.ssh/authorized_keys на сервере.</string>
+    <string name="host_setup_scan_qr">Сканировать QR администратора</string>
+    <string name="host_setup_scan_title">Отсканируйте QR администратора</string>
+    <string name="host_setup_scan_hint">На сервере выполните sudo madmail admin-token и наведите камеру на его QR.</string>
+    <string name="host_setup_scan_rejected">Этот QR — не вход администратора Madmail.</string>
+    <string name="host_setup_scan_permission">Разрешите доступ к камере, чтобы отсканировать QR.</string>
+    <string name="host_setup_scan_no_camera">Не удалось открыть камеру этого телефона.</string>
+    <string name="host_setup_scan_open_settings">Открыть настройки</string>
+    <string name="host_setup_scan_close">Закрыть</string>
+    <string name="host_setup_login_filled">Адрес и ключ администратора заполнены из ссылки.</string>
+    <string name="host_setup_login_invalid">Эта ссылка — не действительный вход администратора Madmail.</string>
+    <string name="host_setup_choice_scan_detail">Заполняет сервер Madmail из вывода sudo madmail admin-token.</string>
 </resources>

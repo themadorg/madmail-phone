@@ -125,6 +125,9 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.platform.LocalDensity
 import org.madmail.mobile.core.GuestNetwork
 import org.madmail.mobile.core.RemoteServer
+import org.madmail.mobile.core.AdminLoginLinks
+import org.madmail.mobile.engine.ApiCredential
+import androidx.compose.material.icons.rounded.QrCodeScanner
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import com.google.zxing.qrcode.encoder.Encoder
 import kotlinx.coroutines.launch
@@ -207,7 +210,8 @@ private val MorphBounds = BoundsTransform { _, _ -> tween(500, easing = Emphasiz
 @Composable
 internal fun HostSetup(phone: Boolean, phoneConfigured: Boolean, initialName: String, firstRun: Boolean,
     onPhone: () -> Unit, onBack: () -> Unit, onCancel: (() -> Unit)?, onComplete: (String) -> Unit,
-    onSaveRemote: (host: String, user: String, port: Int, apiEndpoint: String?, apiKey: String?) -> String?) {
+    onSaveRemote: (host: String, user: String, port: Int, apiEndpoint: String?, apiKey: String?) -> String?,
+    prefill: ApiCredential? = null, onPrefillUsed: () -> Unit = {}) {
     var choosing by rememberSaveable { mutableStateOf(false) }
     var providers by rememberSaveable { mutableStateOf(false) }
     var providerId by rememberSaveable { mutableStateOf("") }
@@ -226,6 +230,7 @@ internal fun HostSetup(phone: Boolean, phoneConfigured: Boolean, initialName: St
     var apiKey by remember { mutableStateOf("") }
     var saveError by remember { mutableStateOf<String?>(null) }
     var tried by rememberSaveable { mutableStateOf(false) }
+    var scanning by remember { mutableStateOf(false) }
     val fields = remember { List(3) { FocusRequester() } }
     val pager = rememberPagerState { introPages.size }
     val scope = rememberCoroutineScope()
@@ -286,6 +291,18 @@ internal fun HostSetup(phone: Boolean, phoneConfigured: Boolean, initialName: St
             onSaveRemote(host.trim(), user.trim(), number, null, null)
         }
     }
+    val toaster = LocalToaster.current
+    val filledMessage = stringResource(R.string.host_setup_login_filled)
+    // An admin sign-in (QR, link or pasted payload) carries both the address and the key, so it lands on the key step ready to connect.
+    fun useLogin(login: ApiCredential) {
+        focus.clearFocus(); tried = false; saveError = null
+        providerId = ""; providers = false
+        address = login.endpoint; apiKey = login.token
+        existing = true; stage = 1
+        haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+        toaster.show(filledMessage)
+    }
+    LaunchedEffect(prefill) { prefill?.let { useLogin(it); onPrefillUsed() } }
     val existingNext = { submit(listOf(existingErrors[0], null)) { tried = false; stage = 1 } }
     val connect = {
         submit(listOf(null, existingErrors[1])) {
@@ -301,7 +318,8 @@ internal fun HostSetup(phone: Boolean, phoneConfigured: Boolean, initialName: St
         ChoiceRows(phoneConfigured, fill,
             onPhone = { tap(); onPhone() },
             onRemote = { tap(); providers = true },
-            onExisting = { tap(); tried = false; stage = 0; existing = true })
+            onExisting = { tap(); tried = false; stage = 0; existing = true },
+            onScan = { tap(); scanning = true })
     }
     // Every step after the choice keeps the sheet's warm colour, so the sheet reads as having grown to fill the screen.
     val page by animateColorAsState(if (step == SetupStep.Intro) introColor() else panelColor(), tween(400, easing = Emphasized), label = "Setup page")
@@ -372,7 +390,8 @@ internal fun HostSetup(phone: Boolean, phoneConfigured: Boolean, initialName: St
                     morph.TopBar(showLogo = false, showBack = true, onBack = ::back, onCancel = onCancel)
                     Box(Modifier.weight(1f)) {
                         morph.ExistingStep(address, endpoint, if (tried) existingErrors[0] else null, fields[0],
-                            onAddress = { address = it.trim(); saveError = null }, onDone = existingNext)
+                            onAddress = { value -> AdminLoginLinks.parse(value)?.let(::useLogin) ?: run { address = value.trim(); saveError = null } },
+                            onScan = { tap(); scanning = true }, onDone = existingNext)
                     }
                     morph.ActionSlot(labelContinue, existingNext)
                 }
@@ -393,6 +412,8 @@ internal fun HostSetup(phone: Boolean, phoneConfigured: Boolean, initialName: St
                 }
             }
         }
+        if (scanning) QrScanner(stringResource(R.string.host_setup_scan_title), stringResource(R.string.host_setup_scan_hint), stringResource(R.string.host_setup_scan_rejected),
+            onText = { text -> AdminLoginLinks.parse(text)?.let { scanning = false; useLogin(it); true } ?: false }, onClose = { scanning = false })
         AnimatedVisibility(current != null, Modifier.align(Alignment.TopCenter).systemBarsPadding(), enter = fadeIn(tween(220, 80)), exit = fadeOut(tween(120))) {
             Box(Modifier.height(56.dp), contentAlignment = Alignment.Center) { PageDots(dotPosition, dots.second, Modifier, R.string.host_setup_step_position) }
         }
@@ -715,13 +736,14 @@ internal enum class HostKind(val top: Long, val bottom: Long, val icon: ImageVec
     Remote(0xFF4C9BFF, 0xFF1A66E0, Icons.Rounded.Dns),
     Existing(0xFF3DD68C, 0xFF14A05A, Icons.Rounded.Link),
     Ssh(0xFF7A8699, 0xFF3B4352, Icons.Rounded.Terminal),
+    Scan(0xFFB57BFF, 0xFF7A3FE0, Icons.Rounded.QrCodeScanner),
 }
 
 @Composable
 internal fun HostIcon(kind: HostKind, modifier: Modifier = Modifier, size: Dp = 40.dp) = Squircle(kind.top, kind.bottom, kind.icon, modifier, size)
 
 @Composable
-private fun Morph.ChoiceRows(phoneConfigured: Boolean, fill: Color, onPhone: () -> Unit, onRemote: () -> Unit, onExisting: () -> Unit) {
+private fun Morph.ChoiceRows(phoneConfigured: Boolean, fill: Color, onPhone: () -> Unit, onRemote: () -> Unit, onExisting: () -> Unit, onScan: () -> Unit) {
     Group(fill = fill) {
         ChoiceRow({ HostIcon(HostKind.Phone, Modifier.element("mark-phone")) }, stringResource(R.string.host_setup_choice_phone),
             stringResource(if (phoneConfigured) R.string.host_setup_choice_phone_done else R.string.host_setup_choice_phone_networks), onPhone)
@@ -729,6 +751,9 @@ private fun Morph.ChoiceRows(phoneConfigured: Boolean, fill: Color, onPhone: () 
         ChoiceRow({ HostIcon(HostKind.Remote, Modifier.element("mark-remote")) }, stringResource(R.string.host_setup_choice_remote), stringResource(R.string.host_setup_choice_remote_detail), onRemote)
         RowDivider()
         ChoiceRow({ HostIcon(HostKind.Existing, Modifier.element("mark-existing")) }, stringResource(R.string.host_setup_choice_existing), stringResource(R.string.host_setup_choice_existing_detail), onExisting)
+        RowDivider()
+        // The QR from `madmail admin-token` fills in a Madmail server's address and key in one go.
+        ChoiceRow({ HostIcon(HostKind.Scan) }, stringResource(R.string.host_setup_scan_qr), stringResource(R.string.host_setup_choice_scan_detail), onScan)
     }
 }
 
@@ -839,10 +864,12 @@ private fun Morph.AccountStep(provider: RemoteProvider, user: String, error: Str
 }
 
 @Composable
-private fun Morph.ExistingStep(address: String, endpoint: String?, error: String?, field: FocusRequester, onAddress: (String) -> Unit, onDone: () -> Unit) {
+private fun Morph.ExistingStep(address: String, endpoint: String?, error: String?, field: FocusRequester, onAddress: (String) -> Unit, onScan: () -> Unit, onDone: () -> Unit) {
     StepPage(stringResource(R.string.host_setup_connect_madmail), stringResource(R.string.host_setup_existing_body), { HostIcon(HostKind.Existing, Modifier.element("mark-existing"), 56.dp) }) {
         Group { FieldRow(stringResource(R.string.host_setup_address_label), address, onAddress, "mail.example.org", field, fieldKeyboard(KeyboardType.Uri, ImeAction.Done), onDone, error) }
         if (error == null) endpoint?.let { Footer(stringResource(R.string.host_setup_connects_to, it)) }
+        Spacer(Modifier.height(24.dp))
+        Group { ActionRow(stringResource(R.string.host_setup_scan_qr), onScan, icon = Icons.Rounded.QrCodeScanner) }
     }
 }
 

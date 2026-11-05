@@ -85,9 +85,15 @@ dependencies {
     implementation("dev.chrisbanes.haze:haze:2.0.1")
     implementation("dev.chrisbanes.haze:haze-blur:2.0.1")
     implementation("com.google.zxing:core:3.5.4")
+    // In-app QR scanning without Play Services; frames are decoded with zxing above.
+    implementation("androidx.camera:camera-camera2:1.6.2")
+    implementation("androidx.camera:camera-lifecycle:1.6.2")
+    implementation("androidx.camera:camera-view:1.6.2")
     implementation("com.github.mwiede:jsch:2.28.8")
     implementation("org.bouncycastle:bcprov-jdk18on:1.86")
     testImplementation("junit:junit:4.13.2")
+    // Android's org.json is a stub on the JVM; unit tests need the real one.
+    testImplementation("org.json:json:20260814")
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
 }

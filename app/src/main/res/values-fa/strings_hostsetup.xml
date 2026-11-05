@@ -124,4 +124,15 @@
     <string name="host_setup_oracle_user">اوبونتو از ubuntu و Oracle Linux از opc استفاده می‌کند.</string>
     <string name="host_setup_oracle_key">با Cloud Shell یا کنسول آن را به ~/.ssh/authorized_keys اضافه کنید.</string>
     <string name="host_setup_key_hint_default">آن را به ~/.ssh/authorized_keys روی سرور اضافه کنید.</string>
+    <string name="host_setup_scan_qr">اسکن QR مدیریت</string>
+    <string name="host_setup_scan_title">QR مدیریت را اسکن کنید</string>
+    <string name="host_setup_scan_hint">روی سرور دستور sudo madmail admin-token را اجرا کنید و دوربین را به سمت QR آن بگیرید.</string>
+    <string name="host_setup_scan_rejected">این QR ورود مدیریت Madmail نیست.</string>
+    <string name="host_setup_scan_permission">برای اسکن QR، دسترسی به دوربین را مجاز کنید.</string>
+    <string name="host_setup_scan_no_camera">دوربین این گوشی باز نشد.</string>
+    <string name="host_setup_scan_open_settings">باز کردن تنظیمات</string>
+    <string name="host_setup_scan_close">بستن</string>
+    <string name="host_setup_login_filled">آدرس و کلید مدیریت از پیوند ورود پر شد.</string>
+    <string name="host_setup_login_invalid">این پیوند ورود مدیریت معتبر Madmail نیست.</string>
+    <string name="host_setup_choice_scan_detail">سرور Madmail را از خروجی sudo madmail admin-token پر می‌کند.</string>
 </resources>
