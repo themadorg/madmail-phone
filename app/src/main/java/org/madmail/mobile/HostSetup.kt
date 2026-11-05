@@ -398,7 +398,7 @@ internal fun HostSetup(phone: Boolean, phoneConfigured: Boolean, initialName: St
                 SetupStep.ApiKey -> Column(Modifier.fillMaxSize().semantics { paneTitle = paneApiKey }) {
                     morph.TopBar(showLogo = false, showBack = true, onBack = ::back, onCancel = onCancel)
                     Box(Modifier.weight(1f)) {
-                        morph.ApiKeyStep(apiKey, saveError, if (tried) existingErrors[1] else null, fields[1],
+                        morph.ApiKeyStep(apiKey, endpoint, saveError, if (tried) existingErrors[1] else null, fields[1],
                             onKey = { apiKey = it.trim(); saveError = null }, onDone = connect)
                     }
                     morph.ActionSlot(labelConnect, connect)
@@ -874,7 +874,7 @@ private fun Morph.ExistingStep(address: String, endpoint: String?, error: String
 }
 
 @Composable
-private fun Morph.ApiKeyStep(key: String, saveError: String?, error: String?, field: FocusRequester, onKey: (String) -> Unit, onDone: () -> Unit) {
+private fun Morph.ApiKeyStep(key: String, endpoint: String?, saveError: String?, error: String?, field: FocusRequester, onKey: (String) -> Unit, onDone: () -> Unit) {
     var reveal by remember { mutableStateOf(false) }
     val clipboard = LocalClipboardManager.current
     StepPage(stringResource(R.string.host_setup_admin_api_key), stringResource(R.string.host_setup_api_stored), { HostIcon(HostKind.Existing, Modifier.element("mark-existing"), 56.dp) }, delay = 60) {
@@ -887,7 +887,8 @@ private fun Morph.ApiKeyStep(key: String, saveError: String?, error: String?, fi
                 }
             }
         }
-        saveError?.let { Footer(it, MaterialTheme.colorScheme.error) }
+        // Always name the server: a sign-in from a link or QR fills this step, so the key alone never decides where it goes.
+        saveError?.let { Footer(it, MaterialTheme.colorScheme.error) } ?: endpoint?.let { Footer(stringResource(R.string.host_setup_connects_to, it)) }
     }
 }
 
