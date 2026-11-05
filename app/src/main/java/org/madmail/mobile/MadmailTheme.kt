@@ -1,8 +1,13 @@
 package org.madmail.mobile
 
+import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontVariation
+import androidx.compose.ui.text.font.FontWeight
 
 // The logo's red identifies actions; warm neutral surfaces keep data crisp in both appearances.
 // Every container role is set so no Material baseline violet leaks through.
@@ -37,3 +42,23 @@ internal fun madmailColors(dark: Boolean) = if (dark) darkColorScheme(
     surfaceContainerHighest = Color(0xFFE7E2E1),
     outline = Color(0xFF857370), outlineVariant = Color(0xFFE6DFDD),
 )
+
+// Persian text is set in Vazirmatn; one variable font file covers every weight the UI uses.
+private val vazirmatn = FontFamily(listOf(FontWeight.Normal, FontWeight.Medium, FontWeight.SemiBold, FontWeight.Bold).map {
+    Font(R.font.vazirmatn, it, variationSettings = FontVariation.Settings(FontVariation.weight(it.weight)))
+})
+
+internal fun madmailTypography(language: String): Typography {
+    val base = Typography()
+    if (language != "fa") return base
+    return Typography(
+        displayLarge = base.displayLarge.copy(fontFamily = vazirmatn), displayMedium = base.displayMedium.copy(fontFamily = vazirmatn),
+        displaySmall = base.displaySmall.copy(fontFamily = vazirmatn), headlineLarge = base.headlineLarge.copy(fontFamily = vazirmatn),
+        headlineMedium = base.headlineMedium.copy(fontFamily = vazirmatn), headlineSmall = base.headlineSmall.copy(fontFamily = vazirmatn),
+        titleLarge = base.titleLarge.copy(fontFamily = vazirmatn), titleMedium = base.titleMedium.copy(fontFamily = vazirmatn),
+        titleSmall = base.titleSmall.copy(fontFamily = vazirmatn), bodyLarge = base.bodyLarge.copy(fontFamily = vazirmatn),
+        bodyMedium = base.bodyMedium.copy(fontFamily = vazirmatn), bodySmall = base.bodySmall.copy(fontFamily = vazirmatn),
+        labelLarge = base.labelLarge.copy(fontFamily = vazirmatn), labelMedium = base.labelMedium.copy(fontFamily = vazirmatn),
+        labelSmall = base.labelSmall.copy(fontFamily = vazirmatn),
+    )
+}

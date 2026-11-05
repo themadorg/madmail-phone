@@ -14,6 +14,7 @@ import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import org.madmail.mobile.core.PortMode
@@ -26,7 +27,8 @@ class MainActivity : ComponentActivity() {
         appLock.protectWindow()
         enableEdgeToEdge()
         setContent {
-            MaterialTheme(colorScheme = madmailColors(isSystemInDarkTheme())) {
+            MaterialTheme(colorScheme = madmailColors(isSystemInDarkTheme()),
+                typography = madmailTypography(LocalConfiguration.current.locales[0].language)) {
                 CompositionLocalProvider(LocalAppLock provides appLock) {
                     ToastHost { if (appLock.locked) AppLockScreen(appLock) else MadmailApp() }
                 }
