@@ -17,6 +17,18 @@ Enter the HTTPS JSON admin-gateway endpoint and API token. A bare HTTPS origin g
 
 API management supports the existing overview, settings, accounts and invitation API paths. Browser/account provisioning stays on the same origin (`/inv/...` and `/new`) without sending the admin token to those web routes. SSH interface discovery and lifecycle/version controls are unavailable in API-only mode. The initial guest URL uses the API origin and port but can be changed independently. Deployments with web provisioning on a separate origin are not supported by this connection path yet.
 
+### Admin sign-in links and QR
+
+`sudo madmail admin-token` prints a QR and an `https://admin.madmail.chat/#<payload>` link, where the payload is unpadded base64url JSON `{"u": endpoint, "t": token}`. The terminal QR holds the bare payload (light modules on a dark background), not the link. Add server accepts all of:
+
+- Scan admin QR, from the Add server list or under Connect your Madmail: an in-app CameraX viewfinder decoded on the phone with zxing (inverted codes included). Camera permission is requested only when the scanner opens. No Play Services.
+- Pasting into Connect your Madmail's address field: the link, the bare payload, `madmail-admin://connect?u=…&t=…`, legacy `?madmail_u=…&madmail_t=…`, or plain JSON.
+- Opening the link from another app. The app handles `https://admin.madmail.chat/` (path `/` only) and `madmail-admin://connect`. A link without a valid sign-in is sent on to the browser, so the web panel keeps working.
+
+`AdminLoginLinks` only parses. The endpoint passes the same HTTPS-only checks as a typed one, and the token is only ever sent to the endpoint it arrived with. A parsed sign-in fills the address and key and stops on the key step; nothing connects until Connect is tapped. A link opened from outside is held in memory only. It is never written to saved state and is not replayed on recreation or from Recents, and the app lock still applies first.
+
+Android 12 and later open `admin.madmail.chat` links in the app by default only once the domain is verified. That requires `https://admin.madmail.chat/.well-known/assetlinks.json` to list `org.madmail.mobile` with the release signing certificate's SHA-256. Until that file is published, those links open the web panel, and the app is used only if the user turns on "Open supported links" for it.
+
 Successful direct API credentials are stored after authentication. Editing the endpoint requires entering a token again; a saved token cannot silently follow an edited URL. HTTP redirects are never followed for credential-bearing requests. The gateway's bearer value remains inside its established JSON request envelope.
 
 ## Storage and removal

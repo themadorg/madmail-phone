@@ -108,6 +108,12 @@ internal fun MadmailApp() {
         remoteState.status.startsWith("Running") -> PowerPhase.On; remoteState.error != null -> PowerPhase.Failed; else -> PowerPhase.Off
     }
 
+    // A login link or scanned admin QR opens Add server on its key step, whatever was showing.
+    val adminLogin = AdminLoginInbox.pending
+    LaunchedEffect(adminLogin) { if (adminLogin != null) { setup = true; phoneSetup = false; chooseServer = false } }
+    val invalidLogin = stringResource(R.string.host_setup_login_invalid)
+    LaunchedEffect(AdminLoginInbox.invalid) { if (AdminLoginInbox.invalid) { toaster.show(invalidLogin, error = true); AdminLoginInbox.invalid = false } }
+
     val colors = MaterialTheme.colorScheme
     BackHandler(selectedId.isNotBlank() && page != 0 && !setup && !chooseServer) { page = 0; openHostingPreferences = false }
     BackHandler(phoneSetup || setup) { if (phoneSetup) phoneSetup = false else { setup = false; replayIntro = false } }
@@ -135,7 +141,7 @@ internal fun MadmailApp() {
                         selectServer(saved.id)
                         page = 0; setup = false; phoneSetup = false
                         null
-                    })
+                    }, prefill = adminLogin, onPrefillUsed = { AdminLoginInbox.pending = null })
             } else {
                 AnimatedContent(targetState = serverId to page, transitionSpec = {
                     val forward = targetState.second >= initialState.second

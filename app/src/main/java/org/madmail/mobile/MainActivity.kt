@@ -2,6 +2,8 @@ package org.madmail.mobile
 
 import androidx.compose.ui.res.stringResource
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.ComponentActivity
@@ -17,7 +19,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import org.madmail.mobile.core.AdminLoginLinks
 import org.madmail.mobile.core.PortMode
+import org.madmail.mobile.engine.ApiCredential
+
+/**
+ * An admin sign-in opened from outside the app (an admin.madmail.chat login link or madmail-admin://).
+ * Held in memory only, never in saved state, until Add server takes it; the app lock still applies first.
+ */
+internal object AdminLoginInbox {
+    var pending by mutableStateOf<ApiCredential?>(null)
+    var invalid by mutableStateOf(false)
+}
 
 class MainActivity : ComponentActivity() {
     private lateinit var appLock: AppLock
@@ -34,7 +47,26 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+        // A recreated activity, or one reopened from Recents, carries the original link again; it was already handled.
+        if (savedInstanceState == null) receive(intent)
     }
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        receive(intent)
+    }
+    private fun receive(intent: Intent?) {
+        if (intent?.action != Intent.ACTION_VIEW || intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0) return
+        val link = intent.data ?: return
+        setIntent(Intent(intent).setData(null))
+        AdminLoginLinks.parse(link.toString())?.let { AdminLoginInbox.pending = it; return }
+        // The app claims admin.madmail.chat/ only for sign-in links; anything else there is the web panel, so it goes to the browser.
+        if (link.scheme == "https" && openInBrowser(link)) return
+        AdminLoginInbox.invalid = true
+    }
+    private fun openInBrowser(link: Uri) = runCatching {
+        startActivity(Intent(Intent.ACTION_VIEW, link).addCategory(Intent.CATEGORY_BROWSABLE)
+            .apply { selector = Intent.makeMainSelectorActivity(Intent.ACTION_MAIN, Intent.CATEGORY_APP_BROWSER) })
+    }.isSuccess
     override fun onPause() {
         appLock.lock()
         super.onPause()
